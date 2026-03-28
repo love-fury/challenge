@@ -50,8 +50,8 @@ Vanilla PyTorch + Diffusers: ~4-5s. Our current production: ~1.4s on H100. Targe
 
 ## References
 
-1. **BFL FLUX.2 reference code**: https://github.com/black-forest-labs/flux
-   - Key files: `src/flux/model.py`, `src/flux/sampling.py`, `src/flux/autoencoder.py`
+1. **BFL FLUX.2 reference code**: https://github.com/black-forest-labs/flux2
+   - Key files: `src/flux2/model.py`, `src/flux2/sampling.py`, `src/flux2/autoencoder.py`
    - Klein is a variant — same architecture, different config
 2. **Model config** (Klein [4B]):
 
@@ -113,7 +113,7 @@ How would you benchmark and validate your proposed strategies? Think about:
 
 ## Related References
 
-- [black-forest-labs/flux](https://github.com/black-forest-labs/flux) — official reference implementation for the model family; start here for architecture and sampling code.
+- [black-forest-labs/flux](https://github.com/black-forest-labs/flux2) — official reference implementation for the model family; start here for architecture and sampling code.
 - [NVIDIA on GitHub](http://github.com/NVIDIA) — useful starting point for finding NVIDIA-maintained inference, kernel, and optimization projects related to this challenge.
 - [Learning-to-Cache: Accelerating Diffusion Transformer via Layer Caching](https://arxiv.org/abs/2406.01733) — a representative paper on DiT caching that should help you think beyond generic precision or kernel suggestions.
 
