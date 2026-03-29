@@ -1,0 +1,113 @@
+{
+  "owner": "coordinator",
+  "phase": "live-confirmed",
+  "last_updated": "2026-03-29T20:10:16+09:00",
+  "conversation_context": {
+    "user_goal": "Preserve concise user-intent context across agents while continuing the Hancom Docs runtime discovery workflow.",
+    "user_constraints": [
+      "Do not store full transcripts.",
+      "Record only what the user wanted, what the user said, and the key decisions made in conversation."
+    ],
+    "decisions": [
+      "Use a hybrid record: machine-readable `conversation_context` in `status.json` plus a short `## Conversation Context` section in `handoff.md`."
+    ],
+    "latest_user_request": "Implement the conversation-context recording convention across agent docs and track records.",
+    "open_questions": []
+  },
+  "upstream_read": [],
+  "new_artifacts": [
+    "docs/task-requests/01-foundation/acceptance-map.md",
+    "docs/task-requests/01-foundation/exploration-registry.json",
+    "docs/task-requests/01-foundation/exploration-registry.md",
+    "docs/task-requests/01-foundation/exploration-options.md",
+    "src/hancom/discovery/01-foundation/breadthFirstOptionSweep.ts",
+    "src/hancom/discovery/01-foundation/editorTopology.ts",
+    "src/hancom/discovery/01-foundation/documentGraphCrossJoinProbe.ts",
+    "src/hancom/discovery/01-foundation/explorationRegistrySeed.ts",
+    "src/hancom/discovery/01-foundation/tableContextUiActionTrace.ts",
+    "src/hancom/discovery/01-foundation/o6nZliJoinProbe.ts",
+    "src/hancom/discovery/01-foundation/tableContextMenuInteractionProbe.ts",
+    "src/hancom/discovery/01-foundation/tableContextTransitionProbe.ts",
+    "src/hancom/discovery/01-foundation/textChainChainComparison.ts",
+    "src/hancom/discovery/01-foundation/textChainDiscriminatorProbe.ts",
+    "src/hancom/discovery/01-foundation/textChainGraphScan.ts",
+    "src/hancom/discovery/01-foundation/widgetStateCensus.ts",
+    "examples/discovery/01-foundation/breadth-first-option-sweep.ts",
+    "examples/discovery/01-foundation/editor-topology.ts",
+    "examples/discovery/01-foundation/document-graph-cross-join.ts",
+    "examples/discovery/01-foundation/exploration-registry-seed.ts",
+    "examples/discovery/01-foundation/o6n-zli-join.ts",
+    "examples/discovery/01-foundation/table-context-menu-interaction.ts",
+    "examples/discovery/01-foundation/table-context-positive-seed-sweep.ts",
+    "examples/discovery/01-foundation/table-context-ui-action-trace.ts",
+    "examples/discovery/01-foundation/table-context-transition-grid.ts",
+    "examples/discovery/01-foundation/text-chain-chain-comparison.ts",
+    "examples/discovery/01-foundation/text-chain-discriminator-probe.ts",
+    "examples/discovery/01-foundation/text-chain-graph-scan.ts",
+    "examples/discovery/01-foundation/widget-state-census.ts",
+    "src/hancom/discovery/01-foundation/commandGlossary.ts",
+    "examples/discovery/01-foundation/command-glossary.ts",
+    "src/hancom/discovery/01-foundation/runtimePathGlossary.ts",
+    "src/hancom/discovery/01-foundation/z5nPliClusterProbe.ts",
+    "examples/discovery/01-foundation/runtime-path-glossary.ts",
+    "examples/discovery/01-foundation/z5n-pli-cluster.ts",
+    "tmp/discovery/01-foundation/editor-topology.json",
+    "tmp/discovery/01-foundation/text-chain-chain-comparison.json",
+    "tmp/discovery/01-foundation/text-chain-chain-comparison-youth-survey.json",
+    "tmp/discovery/01-foundation/text-chain-chain-comparison-youth-survey-full.json",
+    "tmp/discovery/01-foundation/text-chain-discriminator-probe.json",
+    "tmp/discovery/01-foundation/text-chain-discriminator-probe-youth-survey.json",
+    "tmp/discovery/01-foundation/text-chain-discriminator-probe-youth-survey-full.json",
+    "tmp/discovery/01-foundation/text-chain-graph-scan.json",
+    "tmp/discovery/01-foundation/breadth-first-option-sweep-youth-survey.json",
+    "tmp/discovery/01-foundation/command-glossary.json",
+    "tmp/discovery/01-foundation/breadth-first-option-sweep-youth-survey-rerun.json",
+    "tmp/discovery/01-foundation/document-graph-cross-join-youth-survey.json",
+    "tmp/discovery/01-foundation/exploration-registry-seed-youth-survey.json",
+    "tmp/discovery/01-foundation/o6n-zli-join-youth-survey-worker-9333.json",
+    "tmp/discovery/01-foundation/runtime-path-glossary.json",
+    "tmp/discovery/01-foundation/table-context-menu-interaction-youth-survey-worker-9333.json",
+    "tmp/discovery/01-foundation/table-context-positive-seed-sweep-youth-survey-worker-9333.json",
+    "tmp/discovery/01-foundation/table-context-ui-action-trace-youth-survey-worker-9333.json",
+    "tmp/discovery/01-foundation/table-context-transition-grid-youth-survey.json",
+    "tmp/discovery/01-foundation/table-context-transition-grid-youth-survey-worker-9333-rerun.json",
+    "tmp/discovery/01-foundation/table-context-transition-grid-youth-survey-worker-9333-focused.json",
+    "tmp/discovery/01-foundation/widget-state-census-youth-survey.json",
+    "tmp/discovery/01-foundation/z5n-pli-exact-nested-youth-survey-worker-9333.json",
+    "tmp/discovery/01-foundation/z5n-pli-cluster-youth-survey-worker-9333.json"
+  ],
+  "needs_from": [],
+  "subtasks": [
+    {
+      "id": "exploration-registry",
+      "phase": "documented",
+      "needs_from": [],
+      "notes": "Registers every HwpApp top-level path plus critical descendant families for breadth-first subagent exploration."
+    },
+    {
+      "id": "acceptance-map",
+      "phase": "documented",
+      "needs_from": [],
+      "notes": "Maps required and bonus capabilities to owner tracks, verification dependencies, and runtime evidence."
+    },
+    {
+      "id": "runtime-audit",
+      "phase": "planned",
+      "needs_from": [
+        "02-read handoff",
+        "03-query-export handoff",
+        "04-write handoff"
+      ],
+      "notes": "Audits downstream runtime claims against foundation-confirmed object paths and node shapes."
+    },
+    {
+      "id": "command-audit",
+      "phase": "planned",
+      "needs_from": [
+        "04-write command traces"
+      ],
+      "notes": "Audits write-side command claims against UIAPI and ActionManager trace evidence."
+    }
+  ],
+  "ready_for_promotion": true
+}

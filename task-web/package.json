@@ -1,0 +1,43 @@
+{
+  "name": "@lovefury/task-web",
+  "version": "0.1.0",
+  "private": true,
+  "description": "CDP-based Hancom Docs automation SDK scaffold for the Lovefury challenge.",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "clean": "rm -rf dist coverage",
+    "dev": "tsx examples/dump-text.ts",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "lint": "eslint .",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "example:dump": "tsx examples/dump-text.ts",
+    "example:replace": "tsx examples/replace-text.ts",
+    "example:list-targets": "tsx examples/list-targets.ts",
+    "example:sdk-demo": "tsx examples/sdk-demo.ts",
+    "example:verify-save": "tsx examples/verify-save-persistence.ts",
+    "example:chrome-workers": "tsx examples/chrome-workers.ts",
+    "example:chrome-worker-smoke": "tsx examples/chrome-worker-smoke.ts"
+  },
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.0.0",
+    "@types/node": "^22.0.0",
+    "eslint": "^9.0.0",
+    "tsx": "^4.0.0",
+    "typescript": "^5.0.0",
+    "typescript-eslint": "^8.0.0",
+    "vitest": "^3.0.0"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.28.0"
+  }
+}
