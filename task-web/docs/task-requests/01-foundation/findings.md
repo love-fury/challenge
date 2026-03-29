@@ -1,0 +1,95 @@
+# 01 Foundation Findings
+
+Append-only log. 각 항목은 날짜와 `hypothesis` / `observed` / `confirmed` / `failed` 태그를 포함한다.
+
+## 2026-03-29
+
+- `confirmed`: track initialized. Runtime inventory와 command surface를 이 디렉터리에서 관리한다.
+- `observed`: 현재 SDK는 `listChromeTargets()`/`discoverChromeTarget()`로 target을 고르고, `probeRuntimeInventory()`/`inspectEditorFrames()`/`inspectUiApiSurface()`/`inspectActionManagerSurface()`로 foundation inventory를 바로 읽을 수 있다.
+- `observed`: `examples/probe-runtime.ts`는 runtime inventory와 text-chain summary를 함께 출력한다. foundation 관점에서는 이 예제가 현재 가장 짧은 repro 경로다.
+- `observed`: 현재 foundation probe는 frame/canvas topology, `HwpApp` surface, `UIAPI` function key, `ActionManager` key 분류까지는 제공하지만, downstream이 바로 재사용할 object-path glossary나 command candidate catalog는 아직 생성하지 않는다.
+- `next`: `UIAPI`와 `ActionManager`의 function 이름을 operation bucket별로 다시 분류하는 전용 probe가 필요하다.
+- `confirmed`: live target `4BFDC6337D7008E6F615ACAF7864F860`에서 `npx tsx examples/discovery/01-foundation/runtime-path-glossary.ts --port 9223 --target-id 4BFDC6337D7008E6F615ACAF7864F860`를 실행해 exact runtime path glossary를 채집했다.
+- `confirmed`: live target `4BFDC6337D7008E6F615ACAF7864F860`에서 `npx tsx examples/discovery/01-foundation/command-glossary.ts --port 9223 --target-id 4BFDC6337D7008E6F615ACAF7864F860`를 실행해 command-helper bucket을 채집했다.
+- `confirmed`: `HwpApp.document.Svr.G0i`는 direct text-chain root이며, exact node field는 `Aoi`, `Csi`, `sdi.Msi`, `qli`, `tdi`다.
+- `confirmed`: exact style table entrypoint는 `HwpApp.document.Ivr.Y5n.n4n`와 `HwpApp.document.Ivr.$5n.n4n`이다. live target 기준 entry count는 각각 `239`, `162`였다.
+- `confirmed`: char-style sample entry `HwpApp.document.Ivr.Y5n.n4n[0]`에서 `aXt[0].DXt`, `SXt`, `oqt`, `wTi`, `bTi.Msi`가 직접 읽힌다. para-style sample entry `HwpApp.document.Ivr.$5n.n4n[0]`에서는 `FNi`와 `Xli`가 직접 읽힌다.
+- `confirmed`: `HwpApp.FontManager.GetFontListAll`은 exact font catalog entrypoint이며 live target에서 `39`개 폰트를 반환한다.
+- `confirmed`: exact command-helper bucket은 `HwpApp.UIAPI.makeEventActionObj`, `HwpApp.UIAPI.addEventAction`, `HwpApp.UIAPI.getSampleElementListByCmdName`, `HwpApp.UIAPI.getSampleElementListToDescObj`, `HwpApp.UIAPI.findCommandWrapToParent`다.
+- `confirmed`: foundation scope에서는 fallback을 사용하지 않는다. `02-read`는 `readText()`나 paragraph fallback을 경유하지 말고 `HwpApp.document`, `Svr.G0i`, `Ivr.Y5n.n4n`, `Ivr.$5n.n4n`, `FontManager.GetFontListAll` 같은 direct runtime entrypoint만 기반으로 탐색해야 한다.
+- `confirmed`: live target `4BFDC6337D7008E6F615ACAF7864F860`에서 `npx tsx examples/discovery/01-foundation/editor-topology.ts --port 9223 --target-id 4BFDC6337D7008E6F615ACAF7864F860`를 실행해 editor target selection signal과 iframe/canvas topology를 채집했다.
+- `confirmed`: 현재 editor tab은 `https://webhwp.hancomdocs.com/webhwp/?mode=HWP_EDITOR...` URL, top-level `HwpApp`, top-level canvas `2개`, iframe `3개`, 그리고 `#hwpEditorBoardContent`를 가진 iframe `1개`라는 조합으로 안정적으로 식별된다.
+- `confirmed`: runtime root는 iframe 내부가 아니라 top-level page context다. `#hwpEditorBoardContent`를 가진 iframe은 topology marker일 뿐이며, object probe는 계속 top-level `HwpApp` 기준으로 실행해야 한다.
+- `observed`: 현재 로컬 재현 환경의 Chrome debugging endpoint는 `9222`가 아니라 `9223`에서 응답한다. foundation example의 live repro에서는 명시적으로 `--port 9223`를 넘겨야 했다.
+- `confirmed`: live target `4BFDC6337D7008E6F615ACAF7864F860`에서 `npx tsx examples/discovery/01-foundation/text-chain-graph-scan.ts --port 9223 --target-id 4BFDC6337D7008E6F615ACAF7864F860 200`를 실행해 `Svr` 하위 node-like root 후보와 `G0i` 주변 object link path를 채집했다.
+- `confirmed`: `HwpApp.document.Svr` own key에는 `G0i`, `K0i`, `j0i`, `Y0i`, `V0i`, `z0i`, `vVi`, `_Vi`, `Q0i`, `X0i`, `q0i`, `J0i`, `Z0i` 등이 있고, 이 중 node-like root로 확인된 것은 `HwpApp.document.Svr.G0i`와 `HwpApp.document.Svr._Vi.G0i`였다.
+- `confirmed`: `HwpApp.document.Svr._Vi.G0i`는 `Aoi`/`Csi`를 가진 secondary node-like root 후보다. live sample에서 `nodeId=01DCBF3ADF38EE26000015CF`, `styleRef=1`이었고, main `G0i`에서 `tdi`만 따라간 chain에서는 관측되지 않았다.
+- `confirmed`: sampled text-chain node own key에는 `Aoi`, `Csi`, `Loi`, `$ci`, `tdi`, `idi`, `ndi`, `edi`, `rdi`, `sdi`, `hdi`가 반복적으로 나타난다. 특히 `$ci`와 `tdi`는 모두 node-like link로 반복 관측되어 node object가 최소한 doubly-linked chain 형태임이 확인됐다.
+- `observed`: direct `node.vui.type`는 이번 live sample에서 끝까지 `null`이었다. 대신 `Loi[0]` record 안에 `vui` key가 반복적으로 나타나서, table/image/page discriminator 탐색은 `node.vui.type`가 아니라 `node.Loi[*].vui` 쪽으로 이동해야 한다.
+- `observed`: sampled node에서 `adi.Cci`, `hdi`, `udi`가 공통적으로 붙어 있었다. 현재 의미는 미확정이지만 direct child payload inventory로 재사용할 수 있는 안정적인 path다.
+- `confirmed`: live target `4BFDC6337D7008E6F615ACAF7864F860`에서 `npx tsx examples/discovery/01-foundation/text-chain-discriminator-probe.ts --port 9223 --target-id 4BFDC6337D7008E6F615ACAF7864F860 200`를 실행해 `Loi[*].vui`, `adi.Cci`, `_Vi.G0i` discriminator 후보를 직접 채집했다.
+- `confirmed`: `HwpApp.document.Svr._Vi.G0i`는 main `G0i`의 `tdi` chain과 `$ci` chain 어느 쪽에서도 200 node sample 안에 나타나지 않았다. 현재 단계에서는 alias가 아니라 alternate root candidate로 취급해야 한다.
+- `confirmed`: sampled node의 `Loi.length`는 전부 `1`이었고, `Loi[0].vui` own key는 안정적으로 `pos`, `type`이었다. live sample 전체에서 `type=1`만 관측됐고, `pos`는 `-1` 또는 `0`이었다.
+- `confirmed`: `Loi[0].vui.type`는 direct scalar로 읽히므로 current exact discriminator candidate path는 `HwpApp.document.Svr.G0i.Loi[0].vui.type`이다. 다만 richer document가 없어서 `type=1` 외 값은 아직 확보하지 못했다.
+- `confirmed`: `adi.Cci`는 sampled text/control node와 `_Vi.G0i`에서 모두 존재했지만 배열 길이는 전부 `0`이었다. path 자체는 유지하되 현재 문서로는 discriminator payload를 확보할 수 없었다.
+- `confirmed`: live target `4BFDC6337D7008E6F615ACAF7864F860`에서 `npx tsx examples/discovery/01-foundation/text-chain-chain-comparison.ts --port 9223 --target-id 4BFDC6337D7008E6F615ACAF7864F860 200`를 실행해 main/secondary root chain overlap과 `Loi[0].vui` 분포를 비교했다.
+- `confirmed`: `main:tdi`와 `main:$ci`는 각각 `129` node를 순회했고 sampled node set도 동일했다. 즉 현 문서에서는 `$ci`가 backward-like accessor로 동작하며 main chain 전체를 역방향으로 덮는다.
+- `confirmed`: `secondary:tdi`와 `secondary:$ci`는 둘 다 `1` node만 순회하고 main chain과 overlap이 `0`이었다. `_Vi.G0i`는 현 문서 기준 singleton alternate root다.
+- `confirmed`: main chain 전체 `129` node에서 `Loi[0].vui.type=1`만 관측됐고, `pos` 분포는 `-1`이 `119`, `0`이 `10`이었다.
+- `confirmed`: live target `80563C4B8F102EF9494801E3A62C3C83` (`2025년+5월+경제활동인구조사+청년층+부가조사+결과.hwp`)에서 foundation probe를 재실행했다.
+- `confirmed`: 새 문서에서도 `HwpApp.document.Svr._Vi.G0i`는 main `G0i`의 `tdi`/`$ci` chain과 overlap이 `0`이었고, `secondary:tdi`/`secondary:$ci`는 각각 `1` node만 순회했다. alternate root 해석은 유지된다.
+- `confirmed`: 새 문서에서도 `Loi[0].vui.type=1`만 관측됐고, `adi.Cci`는 전 sample에서 empty array였다. richer plain-text/statistical document만으로는 아직 discriminator variance를 확보하지 못했다.
+- `observed`: 새 문서의 `Loi[0].vui.pos`는 sampled `400` node 전체에서 전부 `-1`이었다. 이전 문서의 `-1/0` 혼합 분포와 달라서 `pos`도 문서별 또는 node군별로 달라질 가능성이 있다.
+- `confirmed`: 같은 새 문서에서 `maxNodes=5000` full scan을 다시 실행한 결과 `main:tdi`와 `main:$ci`는 각각 `637` node를 순회했고 sampled node set도 동일했다. 따라서 `400/163 overlap` 결론은 sample limit artifact였고, `$ci` 해석은 full scan 기준으로만 다뤄야 한다.
+- `confirmed`: 새 문서 full scan에서도 `Loi[0].vui.type=1` only, `adi.Cci` empty, `_Vi.G0i` disjoint singleton 패턴은 그대로 유지됐다.
+- `observed`: 두 문서 full scan 기준으로 table/image 존재 여부가 `G0i` main chain discriminator에 반영되지 않았다. table/image가 `Svr` sibling root나 `UIAPI`/state 계열에 있을 가능성이 커졌다.
+- `observed`: non-document-model branch 중에서는 `HwpApp.UIAPI.getWidgetElementList`, `findContainerNodeToParent`, `getContainerSizeInfo`가 table-first probe 우선순위가 가장 높다. command enablement(`c_insert_row_col_list`, `c_remove_row_col_list`, `dialog_edit_table`)는 direct source는 아니지만 table-context strongest secondary signal이다.
+- `observed`: `getSampleElementListByCmdName`, `getSampleElementListToDescObj`, `findCommandWrapToParent`, `OnIsEnabled`를 table cell click과 표 메뉴 open 직후에 함께 trace하면 command descriptor와 table-context transition을 같은 tick에서 잡을 수 있다.
+- `confirmed`: live target `80563C4B8F102EF9494801E3A62C3C83`에서 `npx tsx examples/discovery/01-foundation/widget-state-census.ts --port 9223 --target-id 80563C4B8F102EF9494801E3A62C3C83`를 실행해 non-model table widget census를 채집했다.
+- `confirmed`: `getWidgetElementList("c_insert_row_col_list")`와 `getWidgetElementList("c_remove_row_col_list")`는 각각 `HTMLDivElement 2개`를 반환했고, title-bar branch ancestor에 `class="table_view title_panel"`와 `data-name="table"`가 직접 나타났다. current non-table context에서는 subgroup class가 `disable disabled`였다.
+- `confirmed`: `Object.getPrototypeOf(HwpApp.ActionManager).OnIsEnabled.call(HwpApp.ActionManager, 35456)`은 `true`, `35474`는 `false`였다. table dialog gate와 row/col gate를 direct runtime bit로 구분할 수 있다.
+- `confirmed`: live target `80563C4B8F102EF9494801E3A62C3C83`에서 `npx tsx examples/discovery/01-foundation/breadth-first-option-sweep.ts --port 9223 --target-id 80563C4B8F102EF9494801E3A62C3C83`를 실행해 breadth-first document/model option sweep를 채집했다.
+- `confirmed`: current live rerun 기준 `HwpApp.document.Zvr.$bi`는 `HwpApp.document.Svr._Vi`와 같은 control-root outer shape를 노출한다. 둘 다 `G0i`, `...`, `qli`, `cUt`, `gun`, `Tun` branch를 직접 갖고 `Zvr.$bi.G0i`는 node-like off-main root다.
+- `confirmed`: `HwpApp.document.Svr._ie`는 repeated object array, `HwpApp.document.Ivr.{o6n,h6n,u6n,z5n}`는 non-style property-table 후보로 확인됐다.
+- `confirmed`: live target `80563C4B8F102EF9494801E3A62C3C83`에서 `npx tsx examples/discovery/01-foundation/exploration-registry-seed.ts --port 9223 --target-id 80563C4B8F102EF9494801E3A62C3C83`를 실행해 `window -> HwpApp` top-level registry seed를 채집했다.
+- `confirmed`: foundation breadth-first registry를 `docs/task-requests/01-foundation/exploration-registry.md`와 `docs/task-requests/01-foundation/exploration-registry.json`으로 추가했다. top-level `HwpApp` own key `106개`, explicit row `46개`, shell-group path `95개`를 등록해 “안 찾은 path”를 registry 밖에 남기지 않도록 했다.
+- `confirmed`: live target `80563C4B8F102EF9494801E3A62C3C83`에서 `npx tsx examples/discovery/01-foundation/table-context-transition-grid.ts --port 9223 --target-id 80563C4B8F102EF9494801E3A62C3C83`를 실행해 raw CDP click grid와 table-context snapshot을 결합한 transition probe를 채집했다.
+- `observed`: default grid(`6 x 7`, `42 clicks`)에서는 `tableContextPositive` sample이 `0`이었다. current viewport coarse click만으로는 table cell locator를 확보하지 못했다.
+- `observed`: 같은 grid run에서는 `ActionManager` trace 쪽 `35456/35474` action id가 거의 모든 click에서 반복돼 1차 locator로는 노이즈가 컸다. table-context positive 판정은 widget disabled-state와 `OnIsEnabled(35474)` direct bit를 우선 써야 한다.
+- `confirmed`: live target `80563C4B8F102EF9494801E3A62C3C83`에서 `npx tsx examples/discovery/01-foundation/document-graph-cross-join.ts --port 9223 --target-id 80563C4B8F102EF9494801E3A62C3C83 800 6`를 실행해 `Zvr.$bi`, `Svr._Vi`, `Svr._ie`, `Ivr.{o6n,h6n,u6n,z5n}` cross-join 후보를 직접 채집했다.
+- `confirmed`: `chrome-workers` 재현에서는 새 worker `9334`를 launch만 확인했고, 실제 attach/probe는 이미 `ready_for_attach`였던 worker `9333`에 붙어서 진행했다.
+- `confirmed`: `HwpApp.document.Svr._Vi`와 `HwpApp.document.Zvr.$bi`는 container own key shape가 매우 비슷하지만 alias는 아니었다. youth-survey 문서 기준 두 branch의 `G0i`는 각각 singleton chain(`tdi=1`, `$ci=1`)이고 main `Svr.G0i` chain과 overlap이 `0`이었다.
+- `confirmed`: `HwpApp.document.Svr._ie`와 `HwpApp.document.Svr._Vi.gun` shallow sample entry는 모두 같은 scalar 패턴(`ubi=0`, `cZi=0`, `dZi=false`, `Y9i=1`, `v8i=0`)을 보였고, depth-2 범위에서 node-like descendant는 나타나지 않았다. current evidence로는 `_ie`보다 registry/catalog 쪽에 가깝다.
+- `confirmed`: `HwpApp.document.Ivr` non-style table 후보는 실제 populated array child를 가진다. youth-survey 문서 기준 `o6n.n4n=118`, `h6n.Z0n=8`, `h6n.$0n=7`, `u6n.F4n=19`, `u6n.U4n=18`, `z5n.n4n=10`이었다.
+- `observed`: current cross-join depth에서는 `_ie`/`gun`에서 direct node descendant가 안 나왔고, same-object join도 확보되지 않았다. table-first exact discriminator는 `_ie`보다 `Ivr.o6n.n4n`, `Ivr.h6n.$0n/e2n`, `Ivr.u6n.U4n`, `Ivr.z5n.n4n` 쪽이 더 유망하다.
+- `confirmed`: 새 `chrome-workers` Chrome 프로세스에서도 실제 foundation attach/probe는 worker `9333`의 editor target `A3E565BFDE99512E6DE605079EAD9D50`에 붙어서 진행했다.
+- `confirmed`: live target `A3E565BFDE99512E6DE605079EAD9D50` on chrome worker `9333`에서 `npx tsx examples/discovery/01-foundation/ivr-table-image-split.ts --port 9333 --target-id A3E565BFDE99512E6DE605079EAD9D50`를 실행해 table/image split probe를 채집했다.
+- `confirmed`: `HwpApp.document.Ivr.z5n.n4n[*].PLi[*].type` histogram은 current document에서 `type=0 x80`, `type=1 x3`, `type=3 x1`이었다. parent sample은 `cUt=0`, `yTi=true`를 유지했고 nested `PLi[*]` first entry는 `pos`, `type`, `J6t`, `Z6t`를 직접 노출했다.
+- `confirmed`: `HwpApp.document.Ivr.u6n.U4n[*]` extension histogram은 `bmp x9`, `png x6`, `jpg x3`였고 sampled parent는 `cUt=1`, `Xli=3`, file-like name(`*.jpg`, `*.bmp`, `*.png`)을 직접 담았다.
+- `observed`: `Ivr.z5n.n4n[*].PLi[*]`와 `Ivr.u6n.U4n[*]`는 current document에서 scalar/payload shape가 명확히 갈린다. 전자는 table-structure 후보, 후자는 image-like payload 후보로 보는 해석이 가장 자연스럽다.
+- `observed`: `Ivr.o6n.n4n[*].zli.cUt` histogram은 값 분포가 넓고(`405414673`, `338305809`, `null` 등) current 문서만으로는 semantic mapping을 고정하기 어렵다. bridge 후보로는 유지하되 discriminator 1순위는 아니다.
+- `confirmed`: live target `A3E565BFDE99512E6DE605079EAD9D50` on chrome worker `9333`에서 `npx tsx examples/discovery/01-foundation/z5n-pli-exact-nested.ts --port 9333 --target-id A3E565BFDE99512E6DE605079EAD9D50`를 실행해 `PLi[*]` exact nested payload를 더 좁혔다.
+- `confirmed`: `z5n.PLi[*].type=0`은 `parent Xli=1 x39`, `18 x39`, `0 x1`, `2 x1`에 걸쳐 나타났고 sample `J6t`는 `0` 또는 `3`, `Z6t`는 전부 `0`이었다. `type=1`은 `parent Xli=1/5/6`에서만 `3건`, `type=3`은 `parent Xli=1`에서 `1건`만 관측됐다.
+- `observed`: current evidence만 보면 `type`은 단독 scalar보다 `parent Xli` bucket과 함께 해석해야 하는 table-structure subtype 후보에 가깝다.
+- `confirmed`: live target `A3E565BFDE99512E6DE605079EAD9D50` on chrome worker `9333`에서 `npx tsx examples/discovery/01-foundation/o6n-zli-join.ts --port 9333 --target-id A3E565BFDE99512E6DE605079EAD9D50`를 실행해 `o6n`, `z5n`, `u6n` scalar-id join을 직접 비교했다.
+- `confirmed`: `u6n.U4n[*].Qli`는 `u6n.F4n[*].id` 및 `u6n.F4n[*].vti`와 각각 `18개` exact overlap을 보였다. current image-like branch 안에서는 `Qli`가 internal registry join key로 동작한다.
+- `confirmed`: 반대로 `o6n.qli`, `o6n.zli.qli`는 `z5n.qli` 또는 `u6n.FFi`와 overlap이 `0`이었다. current evidence에서는 `o6n.zli`를 table/image primary bridge로 취급하면 안 된다.
+- `observed`: `o6n.Qli`는 `0..9` prefix에서 `z5n.Qli`와 겹치지만, 이는 wide array prefix overlap일 뿐 semantic join으로 보기엔 약하다.
+- `confirmed`: live target `A3E565BFDE99512E6DE605079EAD9D50` on chrome worker `9333`에서 `npx tsx examples/discovery/01-foundation/table-context-ui-action-trace.ts --port 9333 --target-id A3E565BFDE99512E6DE605079EAD9D50`를 실행해 table-context click 동안 실제 호출되는 `UIAPI`/`ActionManager` 함수 집합을 채집했다.
+- `confirmed`: default `3 x 3` click sweep 기준 `tableContextPositive=true` 좌표가 `4개` 잡혔다. offset 기준으로는 `(520,180)`, `(160,320)`, `(320,520)`, `(520,520)`였고, absolute click 좌표는 각각 `(520,403)`, `(160,543)`, `(320,743)`, `(520,743)`였다.
+- `confirmed`: current live strongest table-context signal은 `ActionManager.OnIsEnabled(35474)` bit와 row/col panel disabled-state의 동시 전환이다. baseline에서는 `35474=false`, `disabledAncestorCount=[2,2]`였고 positive sample에서는 `35474=true`, 최소 한쪽 panel에서 `disabledAncestorCount=0`으로 바뀌었다.
+- `confirmed`: click-time trace에서 안정적으로 관측된 함수는 `HwpApp.UIAPI.getWidgetElementList`, `findContainerNodeToParent`, `findCommandWrapToParent`, `isUiMenuFocus`, `isTitleBarMenuOn`, `Object.getPrototypeOf(HwpApp.ActionManager).OnIsEnabled`였다.
+- `observed`: sampled click 중 일부에서는 `HwpApp.UIAPI.getSampleElementListByCmdName("collabo_user")`가 추가로 호출됐다. current evidence만 보면 table discriminator라기보다 click-side background sample에 가깝다.
+- `observed`: 이번 sweep에서는 wrapper를 설치했어도 `getContainerSizeInfo`, `getSampleElementListToDescObj`, `makeEventActionObj`, `addEventAction`, `SetUIEventListener` 호출은 잡히지 않았다. 이 경로들은 table menu open, context menu open, dialog launch 같은 richer interaction이 있어야 살아날 가능성이 크다.
+- `confirmed`: worker `9333` focused rerun(`table-context-transition-grid-youth-survey-worker-9333-focused.json`)에서는 `tableContextPositive=26`이 잡혔고, positive band는 `yOffset=180/220/260`에 집중됐다. positive `xOffset`은 각각 `[300,420..840]`, `[480..840]`, `[300..840]`였다.
+- `confirmed`: live target `A3E565BFDE99512E6DE605079EAD9D50` on chrome worker `9333`에서 `npx tsx examples/discovery/01-foundation/z5n-pli-cluster.ts --port 9333 --target-id A3E565BFDE99512E6DE605079EAD9D50`를 실행해 `PLi[*]` triple cluster를 추가 채집했다.
+- `confirmed`: `Ivr.z5n.n4n[*].PLi[*]` triple bucket은 현재 문서에서 `0|0|0 x76`, `0|3|0 x4`, `1|3|0 x3`, `3|3|0 x1` 네 가지뿐이었다. `type=1`과 `type=3`은 모두 `J6t=3`, `Z6t=0`이고 rare parent `Xli` bucket에서만 나왔다.
+- `confirmed`: `z5n` parent cluster로 보면 `Xli=18` branch는 `39개` 전부 `0|0|0`이었고, `Xli=1` branch는 `0|0|0 x36`, `0|3|0 x3`, `1|3|0 x1`, `3|3|0 x1`로 섞였다. 현재 table discriminator는 `type` 단독보다 `PLi[*].{type,J6t,Z6t}`와 parent `Xli` 조합이 더 강하다.
+- `confirmed`: live target `A3E565BFDE99512E6DE605079EAD9D50` on chrome worker `9333`에서 `npx tsx examples/discovery/01-foundation/table-context-positive-seed-sweep.ts --port 9333 --target-id A3E565BFDE99512E6DE605079EAD9D50`를 실행해 focused positive/negative seed에서 `tableContext`, `selectionState`, `z5n` cluster, `UIAPI/ActionManager` trace를 같은 tick에 함께 채집했다.
+- `confirmed`: focused seed `(520,180)`, `(320,320)`, `(520,320)`, `(160,320)`, `(520,520)` 중 `3/5`가 `tableContextPositive=true`였다. positive sample은 공통으로 `OnIsEnabled(35474)=true`, `enabledActionIds=[35456,35474]`, `selectionObjectSignals=["modify_object_properties"]`를 보였고, `selectionTableSignals`는 최소 `["c_insert_row_col_list","dialog_edit_table"]`, strongest sample에서는 `c_remove_row_col_list`까지 함께 나타났다.
+- `observed`: 같은 focused sweep에서 baseline과 positive/negative sample의 `z5n` top triple bucket 및 parent cluster signature는 모두 동일했다. current evidence에서는 `Ivr.z5n.n4n[*].PLi[*]`가 selection-local state라기보다 document-level structural table map으로 보인다.
+- `confirmed`: live target `A3E565BFDE99512E6DE605079EAD9D50` on chrome worker `9333`에서 `npx tsx examples/discovery/01-foundation/table-context-menu-interaction.ts --port 9333 --target-id A3E565BFDE99512E6DE605079EAD9D50`를 실행해 focused positive seed 위에서 right-click, `dialog_edit_table`, `modify_object_properties` richer interaction을 각각 독립 시나리오로 채집했다.
+- `confirmed`: `dialog_edit_table` launcher는 hidden-enabled DOM launcher로 안정적으로 존재했고, invoke 이후에는 `data-ui-value="dialog_edit_table"` close button이 visible이 되어 실제 dialog open이 확인됐다.
+- `confirmed`: helper path 3종(`makeEventActionObj`, `addEventAction`, `SetUIEventListener`)은 richer interaction 후에도 여전히 호출되지 않았다. 대신 `dialog_edit_table` 및 `modify_object_properties` invoke 시나리오 전부에서 `ActionManager.NPt`와 `dispatcher.RMs`가 같이 깨어났고, 공통 numeric arg는 `35628`이었다.
+- `observed`: `NPt/RMs(35628)` dispatch가 깨어난 뒤에도 `selectionTableSignals`, `enabledActionIds`, `z5n` triple/parent-cluster signature는 baseline positive seed와 동일했다. current evidence에서는 dispatcher/action path가 selection-local dispatch surface에 더 가깝고, `z5n`은 여전히 document-level structural table map이다.
+- `next`: foundation의 다음 probe는 `NPt/RMs(35628)` result object와 args를 더 깊게 샘플링해서 selection-local dispatch payload를 읽는 것이다. `makeEventActionObj`/`addEventAction`/`SetUIEventListener`는 current interaction class 기준 dead end 후보로 유지하되, richer dispatch surface의 보조 경로로만 다시 본다.

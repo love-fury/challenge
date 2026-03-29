@@ -1,0 +1,84 @@
+{
+  "owner": "unassigned",
+  "phase": "sdk-path-integrated",
+  "last_updated": "2026-03-29T18:12:00+09:00",
+  "conversation_context": {
+    "user_goal": "Close the concrete gaps in 03-query-export by prioritizing unfinished work and moving the SDK path forward.",
+    "user_constraints": [
+      "Do not assess this track from docs alone; verify the actual code path too.",
+      "Work in priority order and keep the handoff concise."
+    ],
+    "decisions": [
+      "Public SDK search/Markdown/structured JSON should route through the query-export adapter without hiding upstream fidelity blockers.",
+      "Validation status must distinguish query-export greens from unrelated existing repo failures."
+    ],
+    "latest_user_request": "Prioritize the unfinished items and move through them one by one.",
+    "open_questions": [
+      "When 02-read snapshot shape stabilizes further, whether the current public query-export snapshot should freeze as-is or be adapted once more."
+    ]
+  },
+  "upstream_read": [
+    "docs/reverse-engineering.md",
+    "docs/task-requests/02-read/handoff.md"
+  ],
+  "new_artifacts": [
+    "docs/task-requests/03-query-export/semantics.md",
+    "docs/task-requests/03-query-export/export-rules.md",
+    "docs/task-requests/03-query-export/acceptance-checklist.md",
+    "src/hancom/discovery/03-query-export/model.ts",
+    "src/hancom/discovery/03-query-export/search.ts",
+    "src/hancom/discovery/03-query-export/export.ts",
+    "src/hancom/discovery/03-query-export/queryExport.ts",
+    "src/utils/queryExport.ts",
+    "src/utils/search.ts",
+    "src/utils/markdown.ts",
+    "src/utils/json.ts",
+    "src/operations/json.ts",
+    "src/HancomDocsClient.ts",
+    "src/index.ts",
+    "examples/discovery/03-query-export/sampleSnapshot.ts",
+    "examples/discovery/03-query-export/query-export-report.ts",
+    "tests/queryExport.test.ts",
+    "tests/search.test.ts",
+    "tmp/discovery/03-query-export/query-export-report.txt"
+  ],
+  "needs_from": [
+    "02-read normalized snapshot shape",
+    "02-read inline run semantics",
+    "02-read table/image discriminator",
+    "02-read page boundary exact path"
+  ],
+  "subtasks": [
+    {
+      "id": "search-semantics",
+      "phase": "sdk-path-integrated",
+      "needs_from": [
+        "02-read normalized snapshot shape",
+        "02-read inline run semantics"
+      ],
+      "notes": "SDK search now routes through canonical snapshot search and returns anchor metadata, but exact upstream page/run semantics still depend on 02-read."
+    },
+    {
+      "id": "markdown-export",
+      "phase": "sdk-path-integrated",
+      "needs_from": [
+        "02-read normalized snapshot shape",
+        "02-read table/image discriminator",
+        "02-read page boundary exact path"
+      ],
+      "notes": "SDK Markdown export now uses query-export warning and fallback rules, while unresolved read-side discriminators remain provisional."
+    },
+    {
+      "id": "json-export",
+      "phase": "sdk-path-integrated",
+      "needs_from": [
+        "02-read normalized snapshot shape",
+        "02-read inline run semantics",
+        "02-read table/image discriminator",
+        "02-read page boundary exact path"
+      ],
+      "notes": "Public JSON export now returns the structured envelope, but exact optional and raw fields still depend on 02-read stabilization."
+    }
+  ],
+  "ready_for_promotion": false
+}

@@ -1,0 +1,58 @@
+{
+  "owner": "codex",
+  "phase": "scaffolded-side-track",
+  "last_updated": "2026-03-29T23:45:00+09:00",
+  "conversation_context": {
+    "user_goal": "Add a separate static deobfuscation lane to find higher-level read/export entrypoints without replacing runtime probing.",
+    "user_constraints": [
+      "Keep runtime probing as the source of truth.",
+      "Treat static deob as a separate track rather than a strategy pivot."
+    ],
+    "decisions": [
+      "This track is a side-track, not a replacement for the current runtime-first approach.",
+      "Primary goal is entrypoint hunt, not full readable bundle restoration."
+    ],
+    "latest_user_request": "Implement the static deob side-track plan.",
+    "open_questions": []
+  },
+  "upstream_read": [
+    "docs/reverse-engineering.md",
+    "docs/task-requests/01-foundation/findings.md",
+    "docs/task-requests/02-read/handoff.md"
+  ],
+  "new_artifacts": [
+    "docs/task-requests/05-static-deob/request.md",
+    "src/hancom/discovery/05-static-deob/bundleFetch.ts",
+    "src/hancom/discovery/05-static-deob/entryPointScanner.ts",
+    "src/hancom/discovery/05-static-deob/webcrackRunner.ts",
+    "examples/discovery/05-static-deob/entrypoint-hunt.ts",
+    "tests/staticDeob.test.ts"
+  ],
+  "needs_from": [
+    "01-foundation live bundle topology confirmation",
+    "02-read runtime follow-up probes for candidate modules"
+  ],
+  "subtasks": [
+    {
+      "id": "bundle-capture",
+      "phase": "scaffolded",
+      "needs_from": [],
+      "notes": "Captures script/resource surface and raw bundle artifacts."
+    },
+    {
+      "id": "deob-pipeline",
+      "phase": "scaffolded",
+      "needs_from": [],
+      "notes": "Runs webcrack and records output paths plus stderr."
+    },
+    {
+      "id": "entrypoint-hunt",
+      "phase": "scaffolded",
+      "needs_from": [
+        "02-read runtime follow-up probes for candidate modules"
+      ],
+      "notes": "Ranks read/export candidates and generates next runtime probe suggestions."
+    }
+  ],
+  "ready_for_promotion": false
+}

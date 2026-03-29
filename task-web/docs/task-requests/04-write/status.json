@@ -1,0 +1,59 @@
+{
+  "owner": "codex",
+  "phase": "write-surface-promoted-with-row-selection-limit",
+  "last_updated": "2026-03-29T18:15:00+09:00",
+  "conversation_context": {
+    "user_goal": "Preserve concise conversation intent across agents without weakening the write-track command and verification record.",
+    "user_constraints": [
+      "Keep only the user's ask, stated preferences, and locked decisions.",
+      "Do not replace technical write evidence with conversational summaries."
+    ],
+    "decisions": [
+      "Write-track records will use the same hybrid context pattern: `status.json` plus `handoff.md`."
+    ],
+    "latest_user_request": "Continue by making row insert/delete honest and implementable in the SDK without pretending exact table/row addressing exists yet.",
+    "open_questions": []
+  },
+  "upstream_read": [
+    "docs/reverse-engineering.md",
+    "docs/task-requests/01-foundation/handoff.md",
+    "docs/task-requests/02-read/handoff.md"
+  ],
+  "new_artifacts": [
+    "docs/task-requests/04-write/operation-matrix.md",
+    "src/hancom/discovery/04-write/writeOperationCatalog.ts",
+    "src/hancom/discovery/04-write/writeDialogActions.ts",
+    "examples/discovery/04-write/trace-operation.ts",
+    "tmp/discovery/04-write/write-surface-catalog.json",
+    "tmp/discovery/04-write/write-operation-traces.json",
+    "tmp/discovery/04-write/write-operation-execution.json"
+  ],
+  "needs_from": [
+    "02-read exact table/image/page boundary read facts for write verification"
+  ],
+  "subtasks": [
+    {
+      "id": "core-write",
+      "phase": "completed",
+      "needs_from": [],
+      "notes": "Owns type text, replace, and save trigger paths plus fallback separation."
+    },
+    {
+      "id": "table-write",
+      "phase": "completed-with-selection-limit",
+      "needs_from": [
+        "02-read exact table/image/page boundary read facts for write verification"
+      ],
+      "notes": "Owns insert table, fill cells, and row insert/delete in the SDK; row mutation currently operates on the active table selection rather than exact table/row addressing."
+    },
+    {
+      "id": "nav-media-write",
+      "phase": "completed",
+      "needs_from": [
+        "02-read exact table/image/page boundary read facts for write verification"
+      ],
+      "notes": "Owns go-to-page and insert-image promotion with explicit verification dependency."
+    }
+  ],
+  "ready_for_promotion": true
+}
