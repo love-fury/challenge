@@ -1,12 +1,13 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  buildDeleteRowBagValues,
+  buildInsertRowBagValues,
   buildInsertTableBagValues,
   buildReplaceAllBagValues,
-  DELETE_ROW_COMMAND_ID,
+  DELETE_ROW_AGGREGATE_COMMAND_ID,
   INSERT_LOWER_ROW_COMMAND_ID,
-  INSERT_UPPER_ROW_COMMAND_ID,
-  resolveInsertRowCommandId
+  INSERT_ROW_AGGREGATE_COMMAND_ID
 } from "../src/hancom/directWriteSpecs.js";
 
 describe("directWriteSpecs", () => {
@@ -27,9 +28,26 @@ describe("directWriteSpecs", () => {
     });
   });
 
+  it("builds the confirmed aggregate delete-row bag values", () => {
+    expect(buildDeleteRowBagValues()).toEqual({
+      16384: 1
+    });
+  });
+
+  it("builds the confirmed aggregate insert-row bag values", () => {
+    expect(buildInsertRowBagValues("above")).toEqual({
+      16384: 2,
+      16385: 1
+    });
+    expect(buildInsertRowBagValues("below")).toEqual({
+      16384: 3,
+      16385: 1
+    });
+  });
+
   it("maps table row mutations to the confirmed command ids", () => {
-    expect(resolveInsertRowCommandId("above")).toBe(INSERT_UPPER_ROW_COMMAND_ID);
-    expect(resolveInsertRowCommandId("below")).toBe(INSERT_LOWER_ROW_COMMAND_ID);
-    expect(DELETE_ROW_COMMAND_ID).toBe(35477);
+    expect(INSERT_ROW_AGGREGATE_COMMAND_ID).toBe(35470);
+    expect(INSERT_LOWER_ROW_COMMAND_ID).toBe(35474);
+    expect(DELETE_ROW_AGGREGATE_COMMAND_ID).toBe(35475);
   });
 });

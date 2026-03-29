@@ -343,6 +343,8 @@ export interface ImageBlock {
   altText?: string;
   caption?: string;
   source?: string;
+  mimeType?: string;
+  base64?: string;
   pageRange?: PageRange;
   controlId?: string;
 }
@@ -389,8 +391,6 @@ export interface SearchMatch {
   start: number;
   end: number;
   match: string;
-  before: string;
-  after: string;
   context: string;
   blockId?: string;
   blockIndex?: number;
@@ -414,12 +414,27 @@ export interface SearchResult {
 }
 
 export interface MarkdownExportOptions {
-  includeWarnings?: boolean;
+  includeWarningsAsComments?: boolean;
+  includeImagesAsDataUrls?: boolean;
 }
 
-export interface MarkdownExportResult {
-  markdown: string;
-  warnings: string[];
+export interface JsonExportOptions {
+  pretty?: boolean;
+  includeWarnings?: boolean;
+  includeRawSnapshot?: boolean;
+  includeImages?: boolean;
+}
+
+export interface JsonExportPayload {
+  schemaVersion: "2026-03-29";
+  generatedAt: string;
+  warnings?: string[];
+  document: {
+    metadata: HancomDocumentMetadata;
+    capabilities: DocumentReadCapabilities;
+    blocks: DocumentBlock[];
+  };
+  rawSnapshot?: HwpJson20DocumentSnapshot;
 }
 
 export interface ReplaceAllRequest {
@@ -523,15 +538,6 @@ export interface TableMutationResult {
   rowCountDelta: number;
   appliedCommand?: "insert_upper_row" | "insert_lower_row" | "remove_row";
 }
-
-export type CaretTarget =
-  | { kind: "document-start" }
-  | { kind: "document-end" }
-  | { kind: "paragraph"; paragraph: ParagraphLocator; offset?: number }
-  | { kind: "run"; paragraph: ParagraphLocator; run: number; offset?: number }
-  | { kind: "table-cell"; table: TableLocator; row: number; col: number; offset?: number }
-  | { kind: "page-start"; pageNumber: number }
-  | { kind: "page-end"; pageNumber: number };
 
 export interface CaretPosition {
   blockId: string;

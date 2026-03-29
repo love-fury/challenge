@@ -3,19 +3,19 @@ import { discoverChromeTarget } from "./client/chromeDiscovery.js";
 import { HancomBridge } from "./hancom/HancomBridge.js";
 import type {
   CaretPosition,
-  CaretTarget,
   ChromeTargetInfo,
   ConnectionOptions,
   DeleteTableRowRequest,
   DocumentBlock,
   FillTableCellsRequest,
   FillTableCellsResult,
-  HancomDocument,
   ImageInsertResult,
   InsertImageRequest,
   InsertTableRequest,
   InsertTableResult,
   InsertTableRowRequest,
+  JsonExportOptions,
+  MarkdownExportOptions,
   PageNavigationResult,
   ParagraphFormattingResult,
   ParagraphLocator,
@@ -49,10 +49,6 @@ export class HancomDocsClient {
     await this.session.close();
   }
 
-  async readDocument(): Promise<HancomDocument> {
-    return await this.bridge.readDocument();
-  }
-
   async readText(): Promise<string> {
     return await this.bridge.readText();
   }
@@ -61,16 +57,20 @@ export class HancomDocsClient {
     return await this.bridge.readStructure();
   }
 
+  async exportMarkdown(options: MarkdownExportOptions = {}): Promise<string> {
+    return await this.bridge.exportMarkdown(options);
+  }
+
+  async exportJson(options: JsonExportOptions = {}): Promise<string> {
+    return await this.bridge.exportJson(options);
+  }
+
   async getParagraphFormatting(locator: ParagraphLocator): Promise<ParagraphFormattingResult> {
     return await this.bridge.getParagraphFormatting(locator);
   }
 
   async search(query: string, options: SearchOptions = {}): Promise<SearchResult> {
     return await this.bridge.search(query, options);
-  }
-
-  async moveCaret(target: CaretTarget): Promise<CaretPosition> {
-    return await this.bridge.moveCaret(target);
   }
 
   async getCaretPosition(): Promise<CaretPosition> {

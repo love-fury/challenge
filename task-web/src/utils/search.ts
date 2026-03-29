@@ -23,8 +23,7 @@ export function searchDocumentText(
     const match = text.slice(start, end);
     const beforeStart = Math.max(0, start - contextWindow);
     const afterEnd = Math.min(text.length, end + contextWindow);
-    const before = text.slice(beforeStart, start);
-    const after = text.slice(end, afterEnd);
+    const context = `${text.slice(beforeStart, start)}${match}${text.slice(end, afterEnd)}`;
     const crossedSeparator = /[\n\t]/.test(match);
 
     matches.push({
@@ -32,9 +31,7 @@ export function searchDocumentText(
       start,
       end,
       match,
-      before,
-      after,
-      context: `${before}${match}${after}`,
+      context,
       crossedNodeBoundary: crossedSeparator,
       crossedSeparator
     });

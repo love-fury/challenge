@@ -3,9 +3,10 @@ import type { TableRowInsertPosition } from "../models/types.js";
 export const REPLACE_ALL_COMMAND_ID = 33810;
 export const GOTO_DIALOG_COMMAND_ID = 33840;
 export const INSERT_TABLE_COMMAND_ID = 35456;
-export const INSERT_UPPER_ROW_COMMAND_ID = 35473;
+export const INSERT_IMAGE_COMMAND_ID = 34736;
+export const INSERT_ROW_AGGREGATE_COMMAND_ID = 35470;
 export const INSERT_LOWER_ROW_COMMAND_ID = 35474;
-export const DELETE_ROW_COMMAND_ID = 35477;
+export const DELETE_ROW_AGGREGATE_COMMAND_ID = 35475;
 export const ACTIVE_TABLE_SELECTION_GATE_COMMAND_ID = INSERT_LOWER_ROW_COMMAND_ID;
 
 export interface DirectBagValues {
@@ -32,6 +33,15 @@ export function buildInsertTableBagValues(rows: number, cols: number): DirectBag
   };
 }
 
-export function resolveInsertRowCommandId(position: TableRowInsertPosition): number {
-  return position === "above" ? INSERT_UPPER_ROW_COMMAND_ID : INSERT_LOWER_ROW_COMMAND_ID;
+export function buildDeleteRowBagValues(): DirectBagValues {
+  return {
+    16384: 1
+  };
+}
+
+export function buildInsertRowBagValues(position: TableRowInsertPosition): DirectBagValues {
+  return {
+    16384: position === "above" ? 2 : 3,
+    16385: 1
+  };
 }

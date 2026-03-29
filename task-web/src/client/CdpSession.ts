@@ -217,6 +217,24 @@ export class CdpSession {
     });
   }
 
+  async pressArrowLeft(): Promise<void> {
+    await this.bringToFront();
+    await this.send("Input.dispatchKeyEvent", {
+      type: "rawKeyDown",
+      key: "ArrowLeft",
+      code: "ArrowLeft",
+      windowsVirtualKeyCode: 37,
+      nativeVirtualKeyCode: 37
+    });
+    await this.send("Input.dispatchKeyEvent", {
+      type: "keyUp",
+      key: "ArrowLeft",
+      code: "ArrowLeft",
+      windowsVirtualKeyCode: 37,
+      nativeVirtualKeyCode: 37
+    });
+  }
+
   async pressEscape(): Promise<void> {
     await this.bringToFront();
     await this.send("Input.dispatchKeyEvent", {

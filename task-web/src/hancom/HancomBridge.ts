@@ -1,7 +1,6 @@
 import type { CdpSession } from "../client/CdpSession.js";
 import type {
   CaretPosition,
-  CaretTarget,
   DeleteTableRowRequest,
   FillTableCellsRequest,
   FillTableCellsResult,
@@ -11,6 +10,8 @@ import type {
   InsertTableRequest,
   InsertTableResult,
   InsertTableRowRequest,
+  JsonExportOptions,
+  MarkdownExportOptions,
   PageNavigationResult,
   ParagraphFormattingResult,
   ParagraphLocator,
@@ -47,6 +48,14 @@ export class HancomBridge {
     return await this.readService.readStructure();
   }
 
+  async exportMarkdown(options: MarkdownExportOptions = {}): Promise<string> {
+    return await this.readService.exportMarkdown(options);
+  }
+
+  async exportJson(options: JsonExportOptions = {}): Promise<string> {
+    return await this.readService.exportJson(options);
+  }
+
   async getParagraphFormatting(locator: ParagraphLocator): Promise<ParagraphFormattingResult> {
     return await this.readService.getParagraphFormatting(locator);
   }
@@ -57,10 +66,6 @@ export class HancomBridge {
 
   async getCaretPosition(): Promise<CaretPosition> {
     return await this.readService.getCaretPosition();
-  }
-
-  async moveCaret(target: CaretTarget): Promise<CaretPosition> {
-    return await this.writeService.moveCaret(target);
   }
 
   async typeText(text: string): Promise<void> {

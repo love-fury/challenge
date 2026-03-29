@@ -45,9 +45,9 @@
 - 라이브 브라우저가 필요한 검증과 pure unit test를 구분한다.
 - 코드 변경 후 최소 `npm run typecheck`, `npm run lint`, `npm run test`를 확인한다.
 - 라이브 검증이 필요한 기능은 `examples/` 스크립트로 재현 경로를 남긴다.
-- fresh CDP Chrome이 필요하면 기존 `npm run example:chrome-workers -- launch ...` 흐름을 사용해 `https://www.hancomdocs.com`을 먼저 띄운다.
-- fresh worker는 `ready_for_login` 상태에서 사용자가 Hancom 로그인을 수동으로 끝낼 때까지 기다린다. 로그인 중에는 attach나 probe를 시도하지 않는다.
-- 사용자가 로그인과 문서 열기를 끝낸 뒤에만 `mark-ready` 또는 실제 attach를 진행한다.
+- fresh CDP Chrome이 필요하면 사용자가 remote debugging Chrome을 직접 띄운 뒤 `https://www.hancomdocs.com`에서 로그인과 문서 열기를 먼저 끝낸다.
+- 로그인 중에는 attach나 probe를 시도하지 않는다.
+- research 전용 probe나 reverse-engineering helper는 `research/` 아래에만 둔다.
 
 ## Delivery Bias
 

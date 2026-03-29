@@ -1,4 +1,4 @@
-import { HancomDocsClient, type CaretTarget, type ParagraphLocator } from "../src/index.js";
+import { HancomDocsClient, type ParagraphLocator } from "../src/index.js";
 import { parseExampleCliOptions } from "./_cli.js";
 
 async function main(): Promise<void> {
@@ -101,7 +101,11 @@ async function runReadCommand(
       console.log(await client.readText());
       return;
     case "document":
-      printJson(await client.readDocument());
+    case "json":
+      console.log(await client.exportJson());
+      return;
+    case "markdown":
+      console.log(await client.exportMarkdown());
       return;
     case "structure":
       printJson(await client.readStructure());
@@ -118,7 +122,7 @@ async function runCaretCommand(
   client: HancomDocsClient,
   args: string[]
 ): Promise<void> {
-  const [subcommand, ...rest] = args;
+  const [subcommand] = args;
 
   if (subcommand === "where") {
     printJson(await client.getCaretPosition());
@@ -128,8 +132,7 @@ async function runCaretCommand(
   if (subcommand !== "move") {
     throw new Error(usage());
   }
-
-  printJson(await client.moveCaret(parseCaretTarget(rest)));
+  throw new Error("caret move is no longer supported.\n\n" + usage());
 }
 
 async function runTableSmokeCommand(
@@ -169,42 +172,6 @@ function parseRowInsertPosition(value: string | undefined): "above" | "below" {
   return position;
 }
 
-function parseCaretTarget(args: string[]): CaretTarget {
-  const [kind, a, b, c] = args;
-
-  switch (kind) {
-    case "document-start":
-      return { kind };
-    case "document-end":
-      return { kind };
-    case "paragraph":
-      return {
-        kind,
-        paragraph: parseParagraphLocator(a),
-        ...(b === undefined ? {} : { offset: parseIntegerArg(b, "offset") })
-      };
-    case "run":
-      return {
-        kind,
-        paragraph: parseParagraphLocator(a),
-        run: parseIntegerArg(b, "run"),
-        ...(c === undefined ? {} : { offset: parseIntegerArg(c, "offset") })
-      };
-    case "page-start":
-      return {
-        kind,
-        pageNumber: parseIntegerArg(a, "pageNumber")
-      };
-    case "page-end":
-      return {
-        kind,
-        pageNumber: parseIntegerArg(a, "pageNumber")
-      };
-    default:
-      throw new Error(usage());
-  }
-}
-
 function parseTableMatrix(input: string): string[][] {
   return input.split(";").map((row) => row.split(","));
 }
@@ -234,6 +201,8 @@ function usage(): string {
     "Usage:",
     "  tsx examples/sdk-demo.ts [connection options] read text",
     "  tsx examples/sdk-demo.ts [connection options] read document",
+    "  tsx examples/sdk-demo.ts [connection options] read json",
+    "  tsx examples/sdk-demo.ts [connection options] read markdown",
     "  tsx examples/sdk-demo.ts [connection options] read structure",
     "  tsx examples/sdk-demo.ts [connection options] read formatting <paragraph>",
     "  tsx examples/sdk-demo.ts [connection options] search <query> [contextWindow]",
@@ -244,7 +213,7 @@ function usage(): string {
     "  tsx examples/sdk-demo.ts [connection options] replace <find> <replace>",
     "  tsx examples/sdk-demo.ts [connection options] insert-table <rows> <cols>",
     "  tsx examples/sdk-demo.ts [connection options] fill-table <row1col1,row1col2;row2col1,row2col2>",
-    "    create the table first, then populate cells with fill-table",
+    "    overwrite the current table; caret must be in that table's first cell",
     "  tsx examples/sdk-demo.ts [connection options] table-smoke [matrix] [above|below] [insertCount] [deleteCount]",
     "  tsx examples/sdk-demo.ts [connection options] save",
     "  tsx examples/sdk-demo.ts [connection options] goto-page <pageNumber>",

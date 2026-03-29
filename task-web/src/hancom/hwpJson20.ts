@@ -20,6 +20,7 @@ import type {
 } from "../models/types.js";
 
 const CONTROL_TOKEN_PATTERN = /<([0-9A-Fa-f]{2})\/([0-9A-Fa-f]{8})\/([A-Za-z0-9]+)>/g;
+const INLINE_SPECIAL_TOKEN_PATTERN = /<([0-9A-Fa-f]{2})(?:\/[0-9A-Fa-fA-Za-z]+){0,3}>/g;
 
 export function parseHwpJson20Document(snapshot: HwpJson20DocumentSnapshot): HancomDocument {
   const warnings: string[] = [];
@@ -42,10 +43,42 @@ export function parseHwpJson20Document(snapshot: HwpJson20DocumentSnapshot): Han
     warnings,
     anchoredControlIds
   };
+  const tableCellRecordIds = collectTableCellRecordIds(controlMap, sublistMap);
 
   for (const [recordId, record] of Object.entries(paragraphRecords)) {
     const bundle = buildRecordBlockBundle({ recordId, record, context: recordParseContext });
     blocks.push(...bundle.blocks);
+  }
+
+  for (const [recordId, record] of Object.entries(sublistMap)) {
+    if (tableCellRecordIds.has(recordId) || typeof record.tx !== "string") {
+      continue;
+    }
+
+    const controlIds = extractResolvedControlIds(record.tx, controlMap);
+    if (controlIds.length > 0 && controlIds.every((id) => anchoredControlIds.has(id))) {
+      const paragraphResult = buildParagraphBlock({
+        recordId,
+        record,
+        charShapeMap,
+        paraShapeMap,
+        styleMap,
+        allowControlOnlyBlock: false
+      });
+      if (paragraphResult.block !== null) {
+        blocks.push(paragraphResult.block);
+      }
+      continue;
+    }
+
+    const bundle = buildRecordBlockBundle({
+      recordId,
+      record,
+      context: recordParseContext
+    });
+    if (bundle.blocks.length > 0) {
+      blocks.push(...bundle.blocks);
+    }
   }
 
   blocks.push(...buildUnanchoredImageBlocks(controlMap, assetMap, anchoredControlIds, warnings));
@@ -68,6 +101,58 @@ export function parseHwpJson20Document(snapshot: HwpJson20DocumentSnapshot): Han
     blocks,
     raw: snapshot
   };
+}
+
+function collectTableCellRecordIds(
+  controlMap: Record<string, HwpJson20ControlPayload>,
+  sublistMap: Record<string, HwpJson20SublistRecord>
+): Set<string> {
+  const tableCellRecordIds = new Set<string>();
+  for (const control of Object.values(controlMap)) {
+    const tableCellIds = collectTableCellIds(control);
+    for (const cellId of tableCellIds) {
+      tableCellRecordIds.add(cellId);
+      for (const chainRecordId of collectTableCellParagraphRecordIds(cellId, sublistMap)) {
+        tableCellRecordIds.add(chainRecordId);
+      }
+    }
+  }
+
+  return tableCellRecordIds;
+}
+
+function collectTableCellParagraphRecordIds(
+  cellId: string,
+  sublistMap: Record<string, HwpJson20SublistRecord>
+): string[] {
+  return followTableCellParagraphChain(cellId, sublistMap)
+    .map((entry) => entry.recordId)
+    .filter((recordId): recordId is string => recordId !== null);
+}
+
+function collectTableCellIds(control: HwpJson20ControlPayload): string[] {
+  const rows = control.tr;
+  if (!Array.isArray(rows)) {
+    return [];
+  }
+
+  const cellIds: string[] = [];
+  for (const row of rows) {
+    if (!Array.isArray(row)) {
+      continue;
+    }
+
+    for (const cell of row) {
+      const cellId = resolveRef(isRecord(cell) ? cell.so : undefined);
+      if (cellId === null) {
+        continue;
+      }
+
+      cellIds.push(cellId);
+    }
+  }
+
+  return cellIds;
 }
 
 interface ParagraphBuildContext {
@@ -122,9 +207,14 @@ function buildParagraphBlock(context: ParagraphBuildContext): ParagraphBuildResu
     charShapeMap,
     paraShape
   });
+  const paragraphRuns =
+    runs.length > 0
+      ? runs
+      : buildFallbackRuns(cleanText, defaultTextStyle, paraShape, defaultCharShapeId);
   const paragraphStyle = resolveParagraphStyle(paraShape, styleEntry);
   const paraStyleVariants = buildParagraphStyleVariants(paraShape, paraShapeId);
   const controlIds = tokens.map((token) => token.objectId);
+  const dominantTextStyle = resolveDominantTextStyle(paragraphRuns);
 
   if (!hasVisibleText && controlIds.length > 0 && !allowControlOnlyBlock) {
     return {
@@ -138,12 +228,9 @@ function buildParagraphBlock(context: ParagraphBuildContext): ParagraphBuildResu
     id: recordId,
     kind: "paragraph",
     text: cleanText,
-    runs:
-      runs.length > 0
-        ? runs
-        : buildFallbackRuns(cleanText, defaultTextStyle, paraShape, defaultCharShapeId),
+    runs: paragraphRuns,
     paragraphStyle,
-    ...(Object.keys(defaultTextStyle).length === 0 ? {} : { dominantTextStyle: defaultTextStyle }),
+    ...(Object.keys(dominantTextStyle).length === 0 ? {} : { dominantTextStyle }),
     ...(paraShapeId === null ? {} : { paraStyleRefs: [paraShapeId] }),
     ...(paraStyleVariants.length === 0 ? {} : { paraStyleVariants }),
     ...(paraStyleVariants.length === 0 ? {} : { paragraphStyleConsistent: true }),
@@ -348,6 +435,23 @@ function buildFallbackRuns(
   ];
 }
 
+function resolveDominantTextStyle(runs: readonly TextRun[]): TextStyle {
+  if (runs.length === 0) {
+    return {};
+  }
+
+  const uniqueStyles = new Map<string, TextStyle>();
+  for (const run of runs) {
+    const normalized = sortTextStyleKeys(run.textStyle);
+    uniqueStyles.set(JSON.stringify(normalized), normalized);
+    if (uniqueStyles.size > 1) {
+      return {};
+    }
+  }
+
+  return uniqueStyles.values().next().value ?? {};
+}
+
 interface ControlBuildContext {
   parentHasVisibleText: boolean;
   token: HwpJson20ControlToken;
@@ -480,10 +584,29 @@ function buildTableCell(context: TableCellBuildContext): DocumentTableCell {
       }
     }).blocks
   );
+  if (blocks.length > 0) {
+    return {
+      id: cellId,
+      blocks
+    };
+  }
+
+  const fallbackRecordEntry = paragraphEntries[0] ?? {
+    recordId: `${cellId}:empty`,
+    record: buildEmptyTableCellParagraphRecord(cellId, payload, sublistMap)
+  };
+  const fallbackParagraph = buildParagraphBlock({
+    recordId: fallbackRecordEntry.recordId ?? `${cellId}:empty`,
+    record: fallbackRecordEntry.record,
+    charShapeMap,
+    paraShapeMap,
+    styleMap,
+    allowControlOnlyBlock: true
+  }).block;
 
   return {
     id: cellId,
-    blocks
+    blocks: fallbackParagraph === null ? [] : [fallbackParagraph]
   };
 }
 
@@ -497,10 +620,42 @@ function readTableCellParagraphEntries(
     return sublistParagraphs;
   }
 
-  return extractParagraphPayloads(payload).map((record, index) => ({
+  const payloadParagraphs = extractParagraphPayloads(payload).map((record, index) => ({
     recordId: `${cellId}:p${index}`,
     record
   }));
+  if (payloadParagraphs.length > 0) {
+    return payloadParagraphs;
+  }
+
+  return [
+    {
+      recordId: `${cellId}:empty`,
+      record: buildEmptyTableCellParagraphRecord(cellId, payload, sublistMap)
+    }
+  ];
+}
+
+function buildEmptyTableCellParagraphRecord(
+  cellId: string,
+  payload: unknown,
+  sublistMap: Record<string, HwpJson20SublistRecord>
+): HwpJson20ParagraphRecord {
+  const cellRecord = sublistMap[cellId];
+  const cellPayload = isRecord(payload) ? payload : null;
+
+  return {
+    tx: "",
+    ...(resolveRef(cellRecord?.pp) ?? resolveRef(cellPayload?.pp)) === null
+      ? {}
+      : { pp: resolveRef(cellRecord?.pp) ?? resolveRef(cellPayload?.pp) },
+    ...(resolveRef(cellRecord?.si) ?? resolveRef(cellPayload?.si)) === null
+      ? {}
+      : { si: resolveRef(cellRecord?.si) ?? resolveRef(cellPayload?.si) },
+    ...(resolveRef(cellRecord?.bf) ?? resolveRef(cellPayload?.bf)) === null
+      ? {}
+      : { bf: resolveRef(cellRecord?.bf) ?? resolveRef(cellPayload?.bf) }
+  };
 }
 
 function followTableCellParagraphChain(
@@ -642,18 +797,23 @@ function parseControlTokens(rawText: string): HwpJson20ControlToken[] {
   return matches;
 }
 
-function stripControlTokens(rawText: string): { cleanText: string; rawToClean: number[] } {
-  const tokens = parseControlTokens(rawText);
-  const rawToClean: number[] = Array.from({ length: rawText.length + 1 }, () => 0);
-  if (tokens.length === 0) {
-    for (let index = 0; index <= rawText.length; index += 1) {
-      rawToClean[index] = index;
+function extractResolvedControlIds(
+  rawText: string,
+  controlMap: Record<string, HwpJson20ControlPayload>
+): string[] {
+  const seen = new Set<string>();
+  for (const token of parseControlTokens(rawText)) {
+    if (controlMap[token.objectId] !== undefined) {
+      seen.add(token.objectId);
     }
-    return {
-      cleanText: rawText,
-      rawToClean
-    };
   }
+
+  return Array.from(seen);
+}
+
+function stripControlTokens(rawText: string): { cleanText: string; rawToClean: number[] } {
+  const tokens = parseInlineSpecialTokens(rawText);
+  const rawToClean: number[] = Array.from({ length: rawText.length + 1 }, () => 0);
 
   let cleanText = "";
   let rawIndex = 0;
@@ -661,31 +821,81 @@ function stripControlTokens(rawText: string): { cleanText: string; rawToClean: n
 
   for (const token of tokens) {
     while (rawIndex < token.start) {
-      cleanText += rawText[rawIndex] ?? "";
+      const nextChar = normalizeVisibleCharacter(rawText[rawIndex] ?? "");
+      cleanText += nextChar;
       rawToClean[rawIndex] = cleanIndex;
       rawIndex += 1;
-      cleanIndex += 1;
+      cleanIndex += nextChar.length;
     }
 
     while (rawIndex < token.end) {
       rawToClean[rawIndex] = cleanIndex;
       rawIndex += 1;
     }
+
+    cleanText += token.replacement;
+    cleanIndex += token.replacement.length;
   }
 
   while (rawIndex < rawText.length) {
-    cleanText += rawText[rawIndex] ?? "";
+    const nextChar = normalizeVisibleCharacter(rawText[rawIndex] ?? "");
+    cleanText += nextChar;
     rawToClean[rawIndex] = cleanIndex;
     rawIndex += 1;
-    cleanIndex += 1;
+    cleanIndex += nextChar.length;
   }
 
   rawToClean[rawText.length] = cleanIndex;
   return {
-      cleanText,
-      rawToClean
-    };
+    cleanText,
+    rawToClean
+  };
+}
+
+function parseInlineSpecialTokens(rawText: string): Array<{ start: number; end: number; replacement: string }> {
+  const matches: Array<{ start: number; end: number; replacement: string }> = [];
+  INLINE_SPECIAL_TOKEN_PATTERN.lastIndex = 0;
+
+  for (const match of rawText.matchAll(INLINE_SPECIAL_TOKEN_PATTERN)) {
+    const raw = match[0];
+    const marker = match[1];
+    if (raw === undefined) {
+      continue;
+    }
+
+    const start = match.index ?? 0;
+    matches.push({
+      start,
+      end: start + raw.length,
+      replacement: resolveInlineSpecialTokenReplacement(raw, marker)
+    });
   }
+
+  return matches;
+}
+
+function resolveInlineSpecialTokenReplacement(raw: string, marker: string | undefined): string {
+  if (raw.includes("/")) {
+    return "";
+  }
+
+  switch (marker?.toUpperCase()) {
+    case "1F":
+      return " ";
+    case "0A":
+      return "\n";
+    default:
+      return "";
+  }
+}
+
+function normalizeVisibleCharacter(value: string): string {
+  if (value === "\u001f") {
+    return " ";
+  }
+
+  return value;
+}
 
 function parseRunBoundaries(value: unknown): Array<{ offset: number; charShapeId: string | null }> {
   if (!Array.isArray(value)) {
@@ -731,16 +941,28 @@ function resolveTextStyle(
   };
 }
 
+function sortTextStyleKeys(style: TextStyle): TextStyle {
+  return {
+    ...(style.bold === undefined ? {} : { bold: style.bold }),
+    ...(style.color === undefined ? {} : { color: style.color }),
+    ...(style.fontName === undefined ? {} : { fontName: style.fontName }),
+    ...(style.fontSize === undefined ? {} : { fontSize: style.fontSize }),
+    ...(style.italic === undefined ? {} : { italic: style.italic })
+  };
+}
+
 function resolveParagraphStyle(
   paraShape: HwpJson20ParaShape | undefined,
   styleEntry?: HwpJson20StyleEntry
 ): ParagraphStyle {
   const headingLevel = resolveHeadingLevelFromStyleEntry(styleEntry);
-  if (paraShape === undefined && headingLevel === undefined) {
+  const alignment = decodeHwpJson20ParagraphAlignment(paraShape?.ah);
+  if (paraShape === undefined && headingLevel === undefined && alignment === undefined) {
     return {};
   }
 
   return {
+    ...(alignment === undefined ? {} : { alignment }),
     ...(typeof paraShape?.lv === "number" ? { lineSpacing: paraShape.lv / 100 } : {}),
     ...(headingLevel === undefined ? {} : { headingLevel })
   };
@@ -795,13 +1017,37 @@ function buildParagraphStyleVariants(
     return [];
   }
 
+  const alignment = decodeHwpJson20ParagraphAlignment(paraShape.ah);
+
   return [
     {
       paraStyleCode: paraShapeId,
+      ...(alignment === undefined ? {} : { alignment }),
       ...(typeof paraShape.lv === "number" ? { lineSpacing: paraShape.lv / 100 } : {}),
       ...(typeof paraShape.ah === "number" ? { rawCUt: paraShape.ah } : {})
     }
   ];
+}
+
+function decodeHwpJson20ParagraphAlignment(
+  value: unknown
+): ParagraphStyle["alignment"] | undefined {
+  if (typeof value !== "number") {
+    return undefined;
+  }
+
+  switch (value) {
+    case 0:
+      return "justify";
+    case 1:
+      return "left";
+    case 2:
+      return "right";
+    case 3:
+      return "center";
+    default:
+      return undefined;
+  }
 }
 
 function buildTableCellParagraphSignature(record: HwpJson20ParagraphRecord): string {

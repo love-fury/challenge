@@ -4,18 +4,26 @@ import {
   pageExecuteDirectGotoPage,
   pageExecuteDirectActionCommand,
   pageExecuteDirectPropertyBagCommand,
-  pageFinalizeInsertImageFileUpload,
-  pagePrepareInsertImageFileUpload,
   pageReadDirectCommandState,
-  pageReadSaveCommandState,
   pageReadWriteCommandStates,
   type DirectBagValues,
   type DirectCommandStateSnapshot,
-  type ImageFileUploadPrepareResult,
-  type SaveCommandStateSnapshot,
   type WriteCommandState,
   type WriteReplayResult
 } from "./pageWriteFunctions.js";
+import {
+  pageExecuteDirectInsertImageBlob,
+  pageFinalizeInsertImageFileUpload,
+  pagePrepareInsertImageFileUpload,
+  type DirectImageInsertReplayResult,
+  type ImageFileUploadPrepareResult
+} from "./pageInsertImageFunctions.js";
+import {
+  pageExecuteSaveActorCommand,
+  pageReadSaveActorState,
+  type SaveActorReplayResult,
+  type SaveActorStateSnapshot
+} from "./pageSaveFunctions.js";
 
 export class HancomWriteDispatcher {
   constructor(private readonly session: CdpSession) {}
@@ -53,15 +61,34 @@ export class HancomWriteDispatcher {
     );
   }
 
-  async readSaveCommandState(): Promise<SaveCommandStateSnapshot> {
-    return await this.session.evaluate<SaveCommandStateSnapshot>(
-      serializePageFunctionCall(pageReadSaveCommandState)
+  async readSaveActorState(): Promise<SaveActorStateSnapshot> {
+    return await this.session.evaluate<SaveActorStateSnapshot>(
+      serializePageFunctionCall(pageReadSaveActorState)
+    );
+  }
+
+  async readSaveCommandState(): Promise<SaveActorStateSnapshot> {
+    return this.readSaveActorState();
+  }
+
+  async executeSaveActorCommand(timeoutMs: number): Promise<SaveActorReplayResult> {
+    return await this.session.evaluate<SaveActorReplayResult>(
+      serializePageFunctionCall(pageExecuteSaveActorCommand, timeoutMs)
     );
   }
 
   async prepareInsertImageFileUpload(): Promise<ImageFileUploadPrepareResult> {
     return await this.session.evaluate<ImageFileUploadPrepareResult>(
       serializePageFunctionCall(pagePrepareInsertImageFileUpload)
+    );
+  }
+
+  async executeDirectInsertImageBlob(
+    base64: string,
+    mimeType: string
+  ): Promise<DirectImageInsertReplayResult> {
+    return await this.session.evaluate<DirectImageInsertReplayResult>(
+      serializePageFunctionCall(pageExecuteDirectInsertImageBlob, base64, mimeType)
     );
   }
 

@@ -1,9 +1,10 @@
+/* eslint-disable max-lines */
+
 import { describe, expect, it } from "vitest";
 
 import { parseHwpJson20Document } from "../src/hancom/hwpJson20.js";
 import type { HwpJson20DocumentSnapshot } from "../src/models/types.js";
 
-// eslint-disable-next-line max-lines-per-function
 describe("parseHwpJson20Document", () => {
   it("reads top-level paragraphs, table cell chains, and anchored images from hwpjson20", () => {
     const snapshot: HwpJson20DocumentSnapshot = {
@@ -152,6 +153,44 @@ describe("parseHwpJson20Document", () => {
     expect(document.capabilities.images).toBe(false);
   });
 
+  it("strips unresolved inline special tokens from visible paragraph text", () => {
+    const snapshot: HwpJson20DocumentSnapshot = {
+      ro: {
+        p0: {
+          tx: "목차<09/00005D8C/00200203/00200020>1"
+        }
+      }
+    };
+
+    const document = parseHwpJson20Document(snapshot);
+
+    expect(document.blocks).toHaveLength(1);
+    expect(document.blocks[0]?.kind).toBe("paragraph");
+    if (document.blocks[0]?.kind !== "paragraph") {
+      throw new Error("Expected a paragraph block.");
+    }
+    expect(document.blocks[0].text).toBe("목차1");
+  });
+
+  it("normalizes standalone inline placeholder tokens into visible separators", () => {
+    const snapshot: HwpJson20DocumentSnapshot = {
+      ro: {
+        p0: {
+          tx: "2024.<1F>5<0A>부록"
+        }
+      }
+    };
+
+    const document = parseHwpJson20Document(snapshot);
+
+    expect(document.blocks).toHaveLength(1);
+    expect(document.blocks[0]?.kind).toBe("paragraph");
+    if (document.blocks[0]?.kind !== "paragraph") {
+      throw new Error("Expected a paragraph block.");
+    }
+    expect(document.blocks[0].text).toBe("2024. 5\n부록");
+  });
+
   it("promotes control-only table-cell paragraphs into nested image blocks", () => {
     const snapshot: HwpJson20DocumentSnapshot = {
       ro: {
@@ -240,27 +279,121 @@ describe("parseHwpJson20Document", () => {
     expect(table.rows[0]?.cells[0]?.blocks[0]?.text).toBe("Cell");
   });
 
-  it("infers heading level from style name when parseable", () => {
+  it("normalizes empty table cells into explicit empty paragraph blocks", () => {
     const snapshot: HwpJson20DocumentSnapshot = {
       ro: {
         p0: {
-          si: "style1",
-          tx: "제목 문단"
+          tx: "<0B/74626C20/tbl1>"
         }
       },
-      st: {
-        style1: {
-          na: "Heading 2",
-          pp: "paraHeading2"
+      cs: {
+        tbl1: {
+          tr: [[{ so: "cell-a" }]],
+          ch: {
+            "cell-a": {}
+          }
         }
+      }
+    };
+
+    const document = parseHwpJson20Document(snapshot);
+    const table = document.blocks[0];
+
+    expect(table?.kind).toBe("table");
+    if (table?.kind !== "table") {
+      throw new Error("Expected a table block.");
+    }
+    expect(table.rows[0]?.cells[0]?.blocks).toHaveLength(1);
+    expect(table.rows[0]?.cells[0]?.blocks[0]?.kind).toBe("paragraph");
+    if (table.rows[0]?.cells[0]?.blocks[0]?.kind !== "paragraph") {
+      throw new Error("Expected a paragraph block.");
+    }
+    expect(table.rows[0]?.cells[0]?.blocks[0]?.text).toBe("");
+  });
+
+  it("keeps control-only empty table-cell paragraphs as explicit empty blocks", () => {
+    const snapshot: HwpJson20DocumentSnapshot = {
+      ro: {
+        p0: {
+          tx: "<0B/74626C20/tbl1>"
+        }
+      },
+      sl: {
+        cell0: {
+          hp: "cell0-p0"
+        },
+        "cell0-p0": {
+          tx: "<15/70676864/pghd0>",
+          pp: "para0",
+          si: "style0"
+        }
+      },
+      cs: {
+        tbl1: {
+          tr: [[{ so: "cell0" }]],
+          ch: {
+            cell0: {}
+          }
+        },
+        pghd0: {}
       },
       pp: {
-        paraHeading2: {
+        para0: {
+          ah: 3,
           lv: 160
         }
       },
-      cs: {},
-      cp: {}
+      st: {
+        style0: {}
+      }
+    };
+
+    const document = parseHwpJson20Document(snapshot);
+    const table = document.blocks[0];
+
+    expect(table?.kind).toBe("table");
+    if (table?.kind !== "table") {
+      throw new Error("Expected a table block.");
+    }
+    expect(table.rows[0]?.cells[0]?.blocks).toHaveLength(1);
+    expect(table.rows[0]?.cells[0]?.blocks[0]?.kind).toBe("paragraph");
+    if (table.rows[0]?.cells[0]?.blocks[0]?.kind !== "paragraph") {
+      throw new Error("Expected a paragraph block.");
+    }
+    expect(table.rows[0]?.cells[0]?.blocks[0]?.text).toBe("");
+    expect(table.rows[0]?.cells[0]?.blocks[0]?.controlIds).toEqual(["pghd0"]);
+  });
+
+  it("derives dominantTextStyle from actual runs instead of the style entry default", () => {
+    const snapshot: HwpJson20DocumentSnapshot = {
+      ro: {
+        p0: {
+          tx: "Alpha",
+          tp: [0, "char-run"],
+          si: "style-default"
+        }
+      },
+      cp: {
+        "char-run": {
+          f1: "돋움체",
+          he: 1100,
+          bo: false,
+          it: false,
+          tc: 0
+        },
+        "char-default": {
+          f1: "함초롬바탕",
+          he: 1000,
+          bo: true,
+          it: false,
+          tc: 0
+        }
+      },
+      st: {
+        "style-default": {
+          cp: "char-default"
+        }
+      }
     };
 
     const document = parseHwpJson20Document(snapshot);
@@ -270,21 +403,70 @@ describe("parseHwpJson20Document", () => {
     if (paragraph?.kind !== "paragraph") {
       throw new Error("Expected a paragraph block.");
     }
-    expect(paragraph.paragraphStyle.headingLevel).toBe(2);
+    expect(paragraph.runs[0]?.textStyle).toEqual({
+      fontName: "돋움체",
+      fontSize: 11,
+      bold: false,
+      italic: false,
+      color: "#000000"
+    });
+    expect(paragraph.dominantTextStyle).toEqual(paragraph.runs[0]?.textStyle);
   });
 
-  it("appends unanchored images after anchored blocks with a warning", () => {
+  it("omits dominantTextStyle when a paragraph contains mixed run styles", () => {
     const snapshot: HwpJson20DocumentSnapshot = {
       ro: {
         p0: {
-          tx: "Anchored paragraph"
+          tx: "ABCD",
+          tp: [0, "char-a", 2, "char-b"]
+        }
+      },
+      cp: {
+        "char-a": {
+          f1: "돋움체",
+          he: 1000,
+          bo: false,
+          it: false,
+          tc: 0
+        },
+        "char-b": {
+          f1: "함초롬바탕",
+          he: 1200,
+          bo: true,
+          it: false,
+          tc: 255
+        }
+      }
+    };
+
+    const document = parseHwpJson20Document(snapshot);
+    const paragraph = document.blocks[0];
+
+    expect(paragraph?.kind).toBe("paragraph");
+    if (paragraph?.kind !== "paragraph") {
+      throw new Error("Expected a paragraph block.");
+    }
+    expect(paragraph.runs).toHaveLength(2);
+    expect(paragraph.dominantTextStyle).toBeUndefined();
+  });
+
+  it("reads control-only non-table sl paragraphs as anchored image blocks", () => {
+    const snapshot: HwpJson20DocumentSnapshot = {
+      ro: {
+        p0: {
+          tx: "Body start"
+        }
+      },
+      sl: {
+        "sl-image": {
+          tx: "<0B/67736F20/slimg1>"
         }
       },
       cs: {
-        imgorphan: {
+        slimg1: {
           rc: {
             img: {
-              bi: "orphan-image.png"
+              bi: "sl-image.png"
             }
           }
         }
@@ -292,7 +474,7 @@ describe("parseHwpJson20Document", () => {
       bi: [
         {
           mt: "image/png",
-          sr: "orphan-image.png"
+          sr: "sl-image.png"
         }
       ]
     };
@@ -300,9 +482,57 @@ describe("parseHwpJson20Document", () => {
     const document = parseHwpJson20Document(snapshot);
 
     expect(document.blocks.map((block) => block.kind)).toEqual(["paragraph", "image"]);
-    expect(document.warnings).toEqual([
-      "Image control imgorphan has no traversed paragraph anchor in hwpjson20; it was appended after anchored blocks."
-    ]);
-    expect(document.capabilities.images).toBe(true);
+    expect(document.blocks[1]?.kind).toBe("image");
+    if (document.blocks[1]?.kind !== "image") {
+      throw new Error("Expected an image block.");
+    }
+    expect(document.blocks[1].source).toBe("sl-image.png");
+    expect(document.warnings).toEqual([]);
   });
+
+  it("does not emit duplicate blocks when an sl paragraph repeats a ro control id", () => {
+    const snapshot: HwpJson20DocumentSnapshot = {
+      ro: {
+        p0: {
+          tx: "<0B/67736F20/sharedimg>"
+        }
+      },
+      sl: {
+        "sl-image": {
+          tx: "<0B/67736F20/sharedimg>"
+        },
+        "sl-text": {
+          tx: "Trailing"
+        }
+      },
+      cs: {
+        sharedimg: {
+          rc: {
+            img: {
+              bi: "shared-image.png"
+            }
+          }
+        }
+      },
+      bi: [
+        {
+          mt: "image/png",
+          sr: "shared-image.png"
+        }
+      ]
+    };
+
+    const document = parseHwpJson20Document(snapshot);
+    expect(document.blocks[0]?.kind).toBe("image");
+    if (document.blocks[0]?.kind !== "image") {
+      throw new Error("Expected an image block.");
+    }
+    expect(document.blocks[1]?.kind).toBe("paragraph");
+    if (document.blocks[1]?.kind !== "paragraph") {
+      throw new Error("Expected a paragraph block.");
+    }
+    expect(document.blocks[1].text).toBe("Trailing");
+    expect(document.warnings).toEqual([]);
+  });
+
 });

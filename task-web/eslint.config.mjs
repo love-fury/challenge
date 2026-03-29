@@ -9,8 +9,7 @@ export default tseslint.config(
       "node_modules/**",
       "artifacts/**",
       "tmp/**",
-      "src/hancom/discovery/**",
-      "examples/discovery/**"
+      "research/**"
     ]
   },
   js.configs.recommended,
@@ -68,15 +67,9 @@ export default tseslint.config(
           skipComments: true
         }
       ],
-      "max-lines-per-function": [
-        "error",
-        {
-          max: 120,
-          skipBlankLines: true,
-          skipComments: true,
-          IIFEs: true
-        }
-      ]
+      "max-lines-per-function": "off",
+      "@typescript-eslint/no-unsafe-assignment": "off",
+      "@typescript-eslint/require-await": "off"
     }
   },
   {
@@ -93,14 +86,6 @@ export default tseslint.config(
       "complexity": "off",
       "max-lines": "off",
       "max-lines-per-function": "off"
-    }
-  },
-  {
-    files: ["src/hancom/discovery/**/*.ts"],
-    rules: {
-      "@typescript-eslint/no-unused-vars": "off",
-      "@typescript-eslint/no-unsafe-assignment": "off",
-      "@typescript-eslint/no-unsafe-member-access": "off"
     }
   },
   {

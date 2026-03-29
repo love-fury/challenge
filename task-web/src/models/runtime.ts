@@ -69,12 +69,18 @@ export interface HwpCacheRuntime extends Record<string, unknown> {
   images?: Record<string, unknown>;
 }
 
+export interface HwpImageLoaderRuntime extends Record<string, unknown> {
+  KYs?: (resourceName: string) => unknown;
+}
+
 export interface HwpAppRuntime extends Record<string, unknown> {
   document?: HwpDocumentRuntime;
   ActionManager?: ActionManagerRuntime;
   UIAPI?: UiApiRuntime;
   hwpCaret?: HwpCaretRuntime;
   cache?: HwpCacheRuntime;
+  IMGLOADER?: HwpImageLoaderRuntime;
+  docId?: string;
 }
 
 export type HancomRuntimeGlobal = typeof globalThis & {

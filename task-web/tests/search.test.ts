@@ -16,8 +16,6 @@ describe("searchDocumentText", () => {
           start: 0,
           end: 5,
           match: "alpha",
-          before: "",
-          after: " be",
           context: "alpha be",
           crossedNodeBoundary: false,
           crossedSeparator: false
@@ -27,8 +25,6 @@ describe("searchDocumentText", () => {
           start: 11,
           end: 16,
           match: "alpha",
-          before: "ta ",
-          after: "",
           context: "ta alpha",
           crossedNodeBoundary: false,
           crossedSeparator: false
@@ -122,7 +118,7 @@ describe("HancomReadService.search", () => {
       ]
     };
 
-    service.readDocument = async () => document;
+    service.readDocument = () => Promise.resolve(document);
 
     const result = await service.search("ha\nbe", { caseSensitive: true, contextWindow: 2 });
 
@@ -134,7 +130,7 @@ describe("HancomReadService.search", () => {
       start: 3,
       end: 8,
       match: "ha\nbe",
-      context: "phha\nbeta",
+      context: "lpha\nbeta",
       crossedNodeBoundary: true,
       crossedSeparator: true
     });

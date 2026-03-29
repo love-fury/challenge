@@ -41,6 +41,123 @@ export function pageReadHwpJson20Snapshot(): HwpJson20DocumentSnapshot | null {
   return snapshot;
 }
 
+export function pageReadLiveImageSourceMap(): Record<string, string> {
+  const isRecord = (value: unknown): value is Record<PropertyKey, unknown> =>
+    typeof value === "object" && value !== null;
+  const readOptionalString = (value: unknown): string | null =>
+    typeof value === "string" && value.length > 0 ? value : null;
+  const globals = globalThis as HancomRuntimeGlobal;
+  const imageRegistryContainer = isRecord(globals.HwpApp?.document?.Ivr?.u6n)
+    ? globals.HwpApp.document.Ivr.u6n
+    : null;
+  const imageRegistryRoot = imageRegistryContainer?.U4n;
+  const cacheImages = isRecord(globals.HwpApp?.cache?.images) ? globals.HwpApp.cache.images : {};
+  const imageLoaderKys =
+    isRecord(globals.HwpApp?.IMGLOADER) && typeof globals.HwpApp.IMGLOADER.KYs === "function"
+      ? (globals.HwpApp.IMGLOADER.KYs as (resourceName: string) => unknown)
+      : null;
+  const imageLoader: { KYs: (resourceName: string) => unknown } | null =
+    imageLoaderKys === null
+      ? null
+      : { KYs: (resourceName: string) => imageLoaderKys(resourceName) };
+  const sourceMap: Record<string, string> = {};
+
+  const resolveResourceUrl = (resourceName: string): string | null => {
+    if (imageLoader === null) {
+      return null;
+    }
+
+    try {
+      return readOptionalString(imageLoader.KYs(resourceName));
+    } catch {
+      return null;
+    }
+  };
+
+  if (!Array.isArray(imageRegistryRoot)) {
+    return sourceMap;
+  }
+
+  for (const entry of imageRegistryRoot) {
+    if (!isRecord(entry)) {
+      continue;
+    }
+
+    const cacheKey = readOptionalString(entry.FFi);
+    if (cacheKey === null) {
+      continue;
+    }
+
+    const cachedImage = cacheImages[cacheKey];
+    if (!isRecord(cachedImage)) {
+      continue;
+    }
+
+    const currentSrc = readOptionalString(cachedImage.currentSrc);
+    const src = readOptionalString(cachedImage.src);
+    const resourceUrl = resolveResourceUrl(cacheKey);
+    const resolvedSource = resourceUrl ?? currentSrc ?? src;
+    if (resolvedSource === null) {
+      continue;
+    }
+
+    sourceMap[cacheKey] = resolvedSource;
+  }
+
+  return sourceMap;
+}
+
+export async function pageReadImageBase64Map(
+  sources: string[]
+): Promise<Record<string, { mimeType?: string; base64: string }>> {
+  const isNonEmptyString = (value: unknown): value is string =>
+    typeof value === "string" && value.length > 0;
+  const readBlobAsDataUrl = async (blob: Blob): Promise<string> =>
+    await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onerror = () => reject(reader.error ?? new Error("Failed to read image blob."));
+      reader.onload = () =>
+        typeof reader.result === "string"
+          ? resolve(reader.result)
+          : reject(new Error("Image blob did not produce a data URL."));
+      reader.readAsDataURL(blob);
+    });
+
+  const uniqueSources = Array.from(new Set(sources.filter(isNonEmptyString)));
+  const entries = await Promise.all(
+    uniqueSources.map(async (source) => {
+      try {
+        const response = await fetch(source, { credentials: "include" });
+        if (!response.ok) {
+          return null;
+        }
+
+        const blob = await response.blob();
+        const dataUrl = await readBlobAsDataUrl(blob);
+        const separatorIndex = dataUrl.indexOf(",");
+        if (separatorIndex === -1) {
+          return null;
+        }
+
+        const header = dataUrl.slice(0, separatorIndex);
+        const base64 = dataUrl.slice(separatorIndex + 1);
+        const mimeTypeMatch = /^data:([^;]+);base64$/i.exec(header);
+        return [
+          source,
+          {
+            ...(mimeTypeMatch?.[1] === undefined ? {} : { mimeType: mimeTypeMatch[1] }),
+            base64
+          }
+        ] as const;
+      } catch {
+        return null;
+      }
+    })
+  );
+
+  return Object.fromEntries(entries.filter((entry): entry is readonly [string, { mimeType?: string; base64: string }] => entry !== null));
+}
+
 export function pageProbeEditorSurface(): EditorProbeSummary {
   const keywordList = ["hancom", "hwp", "editor", "doc", "store", "service", "command"];
   const globals = globalThis as HancomRuntimeRecord;

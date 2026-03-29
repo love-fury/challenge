@@ -9,9 +9,9 @@ import {
 } from "../client/errors.js";
 import type { CdpSession } from "../client/CdpSession.js";
 import type {
-  CaretPosition,
-  CaretTarget,
   DeleteTableRowRequest,
+  DocumentBlock,
+  DocumentTableCell,
   FillTableCellsRequest,
   FillTableCellsResult,
   ImageInsertResult,
@@ -28,24 +28,31 @@ import type {
   TableBlock,
   TableMutationResult,
   TableRowInsertPosition,
-  TableSpec
+  TableSpec,
+  HwpJson20ControlPayload,
+  HwpJson20DocumentSnapshot,
+  HwpJson20SublistRecord
 } from "../models/types.js";
 import { normalizeTableMatrix } from "../utils/document.js";
 import { serializePageFunctionCall } from "./evaluation.js";
+import { HwpJson20Reader } from "./HwpJson20Reader.js";
 import {
   ACTIVE_TABLE_SELECTION_GATE_COMMAND_ID,
+  buildDeleteRowBagValues,
+  buildInsertRowBagValues,
   buildInsertTableBagValues,
   buildReplaceAllBagValues,
-  DELETE_ROW_COMMAND_ID,
+  DELETE_ROW_AGGREGATE_COMMAND_ID,
+  INSERT_ROW_AGGREGATE_COMMAND_ID,
   INSERT_TABLE_COMMAND_ID,
   REPLACE_ALL_COMMAND_ID,
-  resolveInsertRowCommandId
 } from "./directWriteSpecs.js";
 import { HancomWriteDispatcher } from "./HancomWriteDispatcher.js";
+import { isSaveNoOpState } from "./pageSaveFunctions.js";
 import {
-  pageDetectPlatform,
   pageReadCaretState,
-  pageReadCurrentTableCellState
+  pageReadCurrentTableCellState,
+  pageDetectPlatform
 } from "./pageFunctions.js";
 
 interface RawCaretState {
@@ -66,18 +73,13 @@ export class HancomWriteService {
 
   private observedActiveTable: TableBlock | null = null;
 
+  private readonly hwpJson20Reader: HwpJson20Reader;
+
   private readonly writeDispatcher: HancomWriteDispatcher;
 
   constructor(private readonly session: CdpSession) {
+    this.hwpJson20Reader = new HwpJson20Reader(session);
     this.writeDispatcher = new HancomWriteDispatcher(session);
-  }
-
-  // TODO(static-deob): promote moveCaret to an exact ActionManager/UIAPI-backed path once the
-  // runtime command/context mapping is confirmed.
-  moveCaret(target: CaretTarget): Promise<CaretPosition> {
-    return Promise.reject(new CapabilityUnavailableError(
-      `moveCaret is unavailable. The SDK does not have a non-hook runtime path for caret movement yet: ${JSON.stringify(target)}`
-    ));
   }
 
   async typeText(text: string): Promise<void> {
@@ -89,17 +91,14 @@ export class HancomWriteService {
       throw new EditorPreconditionError("replaceAll requires a non-empty find string.");
     }
 
-    if (request.caseSensitive === true) {
-      throw new CapabilityUnavailableError(
-        "replaceAll with caseSensitive=true is unavailable without an exact runtime command path."
-      );
-    }
-
     const replay = await this.writeDispatcher.executeDirectPropertyBagCommand(
       REPLACE_ALL_COMMAND_ID,
       buildReplaceAllBagValues(request.find, request.replace)
     );
-    if (!replay.ok) {
+    const replaceAllFalseNegative =
+      replay.ok === false &&
+      replay.reason === `Direct property-bag command ${String(REPLACE_ALL_COMMAND_ID)} returned false.`;
+    if (!replay.ok && !replaceAllFalseNegative) {
       throw new CapabilityUnavailableError(`replaceAll is unavailable. ${replay.reason}`);
     }
 
@@ -132,31 +131,29 @@ export class HancomWriteService {
 
   async fillTableCells(request: FillTableCellsRequest): Promise<FillTableCellsResult> {
     const values = normalizeTableMatrix(request.values);
+    const providedCellCount = countMatrixCells(values);
 
     if (request.table !== undefined || request.startCell !== undefined) {
       throw new EditorPreconditionError(
-        "fillTableCells fallback only supports writing from the current selected cell."
+        "fillTableCells overwrites the current table and does not support explicit table/startCell targeting."
       );
     }
 
-    if (this.activeTableSpec === null) {
+    let tableContext = await this.resolveCurrentTableFillContext();
+    const expectedCellCount = countTableCells(tableContext.table);
+    if (providedCellCount !== expectedCellCount) {
       throw new EditorPreconditionError(
-        "fillTableCells fallback requires a preceding insertTable() call so the SDK can track the active table shape."
+        `fillTableCells must overwrite the entire current table. Expected ${String(expectedCellCount)} cells but received ${String(providedCellCount)}.`
+      );
+    }
+    if (!tableContext.isFirstCell) {
+      tableContext = await this.moveToFirstCellOfCurrentTable(
+        tableContext.table.id,
+        Math.max(8, expectedCellCount * 8)
       );
     }
 
-    await this.ensureCurrentTableCellContext("fillTableCells");
-
-    const activeTableSpec = this.activeTableSpec;
-    const firstRow = values[0];
-    const columnCount = firstRow === undefined ? 0 : firstRow.length;
-    if (values.length > activeTableSpec.rows || columnCount > activeTableSpec.cols) {
-      throw new EditorPreconditionError(
-        "fillTableCells fallback matrix exceeds the dimensions of the SDK-tracked active table."
-      );
-    }
-
-    const observedValues = createBlankMatrix(this.activeTableSpec.rows, this.activeTableSpec.cols);
+    const observedValues = createBlankMatrixFromTable(tableContext.table);
     for (const [rowIndex, row] of values.entries()) {
       for (const [columnIndex, cell] of row.entries()) {
         const writtenCell = await this.writeCurrentTableCell(cell);
@@ -169,58 +166,51 @@ export class HancomWriteService {
       }
     }
 
-    this.observedActiveTable = this.createObservedTableBlock(
-      this.activeTableSpec.rows,
-      this.activeTableSpec.cols,
+    this.observedActiveTable = this.createObservedTableBlockFromTemplate(
+      tableContext.table,
       observedValues
     );
+    this.activeTableSpec = resolveRectangularTableSpec(tableContext.table);
 
     return {
-      writtenCellCount: countMatrixCells(values),
-      tableId: this.observedActiveTable.id
+      writtenCellCount: providedCellCount,
+      ...(this.observedActiveTable === null ? {} : { tableId: this.observedActiveTable.id })
     };
   }
 
   async save(options: SaveOptions = {}): Promise<SaveResult> {
-    // TODO(static-deob): replace shortcut-based save with exact internal `d_save` dispatch path.
-    const platform = await this.session.evaluate<string>(
-      serializePageFunctionCall(pageDetectPlatform)
-    );
-    const before = await this.writeDispatcher.readSaveCommandState();
-    const modifier = platform.toLocaleLowerCase().includes("mac") ? "Meta" : "Control";
-    await this.session.pressShortcut("s", modifier);
-    let after = before;
-    const timeoutMs = Math.max(150, options.timeoutMs ?? 900);
-    const maxAttempts = Math.max(1, Math.ceil(timeoutMs / 150));
-
-    for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
-      await this.wait(150);
-      after = await this.writeDispatcher.readSaveCommandState();
-
-      const saveCommandSettled = before.hasEnabledSaveCommand && !after.hasEnabledSaveCommand;
-      const alertChanged = after.alertText !== before.alertText;
-      const titleChanged = after.title !== before.title;
-      if (saveCommandSettled || alertChanged || titleChanged) {
-        break;
-      }
+    const before = await this.writeDispatcher.readSaveActorState();
+    if (!before.actorAvailable) {
+      throw new CapabilityUnavailableError("save is unavailable. The runtime save actor surface is unavailable.");
+    }
+    if (isSaveNoOpState(before)) {
+      return {
+        savedAt: new Date().toISOString(),
+        beforeSaveCommandEnabled: before.hasEnabledSaveCommand,
+        afterSaveCommandEnabled: before.hasEnabledSaveCommand,
+        titleBefore: before.title,
+        titleAfter: before.title,
+        alertText: before.alertText
+      };
+    }
+    if (before.actorEnabled === false) {
+      throw new CapabilityUnavailableError(
+        "save is unavailable. The runtime save actor is disabled in the current editor state."
+      );
     }
 
-    const saveCommandSettled = before.hasEnabledSaveCommand && !after.hasEnabledSaveCommand;
-    const alertChanged = after.alertText !== before.alertText;
-    const titleChanged = after.title !== before.title;
-    if (before.hasEnabledSaveCommand && !saveCommandSettled && !alertChanged && !titleChanged) {
-      throw new CapabilityUnavailableError(
-        `save shortcut did not produce an observable save confirmation signal within ${timeoutMs}ms.`
-      );
+    const replay = await this.writeDispatcher.executeSaveActorCommand(options.timeoutMs ?? 900);
+    if (!replay.ok) {
+      throw new CapabilityUnavailableError(`save is unavailable. ${replay.reason}`);
     }
 
     return {
       savedAt: new Date().toISOString(),
-      beforeSaveCommandEnabled: before.hasEnabledSaveCommand,
-      afterSaveCommandEnabled: after.hasEnabledSaveCommand,
-      titleBefore: before.title,
-      titleAfter: after.title,
-      alertText: after.alertText
+      beforeSaveCommandEnabled: replay.before.hasEnabledSaveCommand,
+      afterSaveCommandEnabled: replay.after.hasEnabledSaveCommand,
+      titleBefore: replay.before.title,
+      titleAfter: replay.after.title,
+      alertText: replay.after.alertText
     };
   }
 
@@ -263,15 +253,11 @@ export class HancomWriteService {
       throw new EditorPreconditionError(`Image file was not found or is not readable: ${resolvedPath}`);
     }
 
-    // TODO(static-deob): replace upload finalization fallback with exact ActionManager/UIAPI image insert flow.
-    const prepared = await this.writeDispatcher.prepareInsertImageFileUpload();
-    if (!prepared.ok || !prepared.selector) {
-      throw new CapabilityUnavailableError(`insertImage is unavailable. ${prepared.reason}`);
-    }
-
-    await this.session.setFileInputFiles(prepared.selector, [resolvedPath]);
-
-    const replay = await this.writeDispatcher.finalizeInsertImageFileUpload();
+    const fileBuffer = await fs.readFile(resolvedPath);
+    const replay = await this.writeDispatcher.executeDirectInsertImageBlob(
+      fileBuffer.toString("base64"),
+      inferImageMimeType(resolvedPath)
+    );
     if (!replay.ok) {
       throw new CapabilityUnavailableError(`insertImage is unavailable. ${replay.reason}`);
     }
@@ -285,11 +271,13 @@ export class HancomWriteService {
   async insertTableRow(request: InsertTableRowRequest): Promise<TableMutationResult> {
     const count = validateTableMutationCount(request.count);
     await this.ensureActiveTableSelection("insertTableRow");
-    const commandId = resolveInsertRowCommandId(request.position);
     const appliedCommand = mapInsertRowCommand(request.position);
 
     for (let iteration = 0; iteration < count; iteration += 1) {
-      const replay = await this.writeDispatcher.executeDirectActionCommand(commandId);
+      const replay = await this.writeDispatcher.executeDirectPropertyBagCommand(
+        INSERT_ROW_AGGREGATE_COMMAND_ID,
+        buildInsertRowBagValues(request.position)
+      );
       if (!replay.ok) {
         throw new CapabilityUnavailableError(`insertTableRow is unavailable. ${replay.reason}`);
       }
@@ -314,7 +302,10 @@ export class HancomWriteService {
     await this.ensureActiveTableSelection("deleteTableRow");
 
     for (let iteration = 0; iteration < count; iteration += 1) {
-      const replay = await this.writeDispatcher.executeDirectActionCommand(DELETE_ROW_COMMAND_ID);
+      const replay = await this.writeDispatcher.executeDirectPropertyBagCommand(
+        DELETE_ROW_AGGREGATE_COMMAND_ID,
+        buildDeleteRowBagValues()
+      );
       if (!replay.ok) {
         throw new CapabilityUnavailableError(`deleteTableRow is unavailable. ${replay.reason}`);
       }
@@ -419,6 +410,23 @@ export class HancomWriteService {
     };
   }
 
+  private createObservedTableBlockFromTemplate(
+    table: TableBlock,
+    values: readonly string[][]
+  ): TableBlock {
+    return {
+      id: table.id,
+      kind: "table",
+      ...(table.controlId === undefined ? {} : { controlId: table.controlId }),
+      ...(table.pageRange === undefined ? {} : { pageRange: table.pageRange }),
+      rows: table.rows.map((row, rowIndex) => ({
+        cells: row.cells.map((cell, columnIndex) =>
+          this.createObservedTableCellBlock(cell, values[rowIndex]?.[columnIndex] ?? "")
+        )
+      }))
+    };
+  }
+
   private async tryReadCurrentTableCell(): Promise<ParagraphBlock | null> {
     return await this.session.evaluate<ParagraphBlock | null>(
       serializePageFunctionCall(pageReadCurrentTableCellState)
@@ -434,6 +442,34 @@ export class HancomWriteService {
     }
 
     return currentCell;
+  }
+
+  private async resolveCurrentTableFillContext(): Promise<{
+    table: TableBlock;
+    isFirstCell: boolean;
+    currentCell: ParagraphBlock;
+  }> {
+    const currentCell = await this.ensureCurrentTableCellContext("fillTableCells");
+    const currentNodeId = getParagraphIdentity(currentCell);
+    if (currentNodeId === null) {
+      throw new EditorPreconditionError(
+        "fillTableCells could not resolve the current table cell identity."
+      );
+    }
+
+    const snapshot = await this.readHwpJson20Snapshot();
+    const tableLocation = locateTableCellInSnapshot(snapshot, currentNodeId);
+    if (tableLocation === null) {
+      throw new EditorPreconditionError(
+        `fillTableCells could not resolve the current table from caret node ${currentNodeId}.`
+      );
+    }
+
+    return {
+      table: tableLocation.table,
+      isFirstCell: tableLocation.isFirstCell,
+      currentCell
+    };
   }
 
   private async tryPromoteCurrentCellToTableSelection(): Promise<boolean> {
@@ -497,6 +533,40 @@ export class HancomWriteService {
 
     throw new EditorPreconditionError(
       "fillTableCells could not confirm movement to a different table cell after Tab."
+    );
+  }
+
+  private async moveToPreviousObservedTableCell(): Promise<void> {
+    const before = await this.ensureCurrentTableCellContext("fillTableCells");
+    const beforeIdentity = getParagraphIdentity(before);
+    const beforeText = before.text;
+
+    await this.session.pressEscape();
+    await this.wait(80);
+    await this.session.pressArrowLeft();
+    await this.wait(120);
+
+    const after = await this.tryReadCurrentTableCell();
+    if (after === null) {
+      throw new EditorPreconditionError(
+        "fillTableCells could not confirm movement to the previous table cell after leaving edit mode."
+      );
+    }
+
+    const afterIdentity = getParagraphIdentity(after);
+    if (beforeIdentity !== null && afterIdentity !== null && beforeIdentity !== afterIdentity) {
+      return;
+    }
+
+    if (after.text !== beforeText) {
+      await this.undoLastEdit();
+      throw new EditorPreconditionError(
+        "fillTableCells aborted because ArrowLeft mutated the current cell instead of moving to the previous cell."
+      );
+    }
+
+    throw new EditorPreconditionError(
+      "fillTableCells could not confirm movement to a different table cell after ArrowLeft."
     );
   }
 
@@ -573,14 +643,114 @@ export class HancomWriteService {
     await this.session.pressShortcut("z", modifier);
     await this.wait(120);
   }
+
+  private async moveToFirstCellOfCurrentTable(
+    tableId: string,
+    maxSteps: number
+  ): Promise<{
+    table: TableBlock;
+    isFirstCell: boolean;
+    currentCell: ParagraphBlock;
+  }> {
+    let context = await this.resolveCurrentTableFillContext();
+    if (context.table.id !== tableId) {
+      throw new EditorPreconditionError(
+        "fillTableCells lost the current table context before repositioning to the first cell."
+      );
+    }
+    if (context.isFirstCell) {
+      return context;
+    }
+
+    for (let step = 0; step < maxSteps; step += 1) {
+      await this.moveToPreviousObservedTableCell();
+      context = await this.resolveCurrentTableFillContext();
+      if (context.table.id !== tableId) {
+        throw new EditorPreconditionError(
+          "fillTableCells moved out of the current table while repositioning to the first cell."
+        );
+      }
+      if (context.isFirstCell) {
+        return context;
+      }
+    }
+
+    throw new EditorPreconditionError(
+      "fillTableCells could not reposition the caret to the first cell of the current table."
+    );
+  }
+
+  private async readHwpJson20Snapshot(): Promise<HwpJson20DocumentSnapshot> {
+    const snapshot = await this.hwpJson20Reader.readSnapshot();
+    if (snapshot === null) {
+      throw new CapabilityUnavailableError(
+        "fillTableCells is unavailable. Could not obtain the runtime hwpjson20 snapshot."
+      );
+    }
+
+    return snapshot;
+  }
+
+  private createObservedTableCellBlock(cell: DocumentTableCell, value: string): DocumentTableCell {
+    const paragraphId = findFirstParagraphId(cell.blocks) ?? `${cell.id}:sdk-observed-paragraph`;
+
+    return {
+      id: cell.id,
+      blocks:
+        value.length === 0
+          ? []
+          : [
+              {
+                id: paragraphId,
+                kind: "paragraph",
+                text: value,
+                runs: [
+                  {
+                    text: value,
+                    start: 0,
+                    end: value.length,
+                    textStyle: {}
+                  }
+                ],
+                paragraphStyle: {},
+                rawNodeIds: [paragraphId]
+              }
+            ]
+    };
+  }
+}
+
+function inferImageMimeType(filePath: string): string {
+  switch (path.extname(filePath).toLowerCase()) {
+    case ".png":
+      return "image/png";
+    case ".jpg":
+    case ".jpeg":
+      return "image/jpeg";
+    case ".gif":
+      return "image/gif";
+    case ".webp":
+      return "image/webp";
+    case ".bmp":
+      return "image/bmp";
+    case ".svg":
+    case ".svgz":
+      return "image/svg+xml";
+    default:
+      return "application/octet-stream";
+  }
 }
 
 function countMatrixCells(matrix: readonly string[][]): number {
   return matrix.reduce((sum, row) => sum + row.length, 0);
 }
 
-function createBlankMatrix(rows: number, cols: number): string[][] {
-  return Array.from({ length: rows }, () => Array.from({ length: cols }, () => ""));
+function countTableCells(table: TableBlock): number {
+  return table.rows.reduce((sum, row) => sum + row.cells.length, 0);
+}
+
+function createBlankMatrixFromTable(table: TableBlock): string[][] {
+  return table.rows.map((row) => row.cells.map(() => ""));
 }
 
 function getParagraphIdentity(paragraph: ParagraphBlock | null): string | null {
@@ -636,4 +806,304 @@ function mapInsertRowCommand(
   position: TableRowInsertPosition
 ): "insert_upper_row" | "insert_lower_row" {
   return position === "above" ? "insert_upper_row" : "insert_lower_row";
+}
+
+function resolveRectangularTableSpec(table: TableBlock): TableSpec | null {
+  if (table.rows.length === 0) {
+    return null;
+  }
+
+  const firstRowCellCount = table.rows[0]?.cells.length ?? 0;
+  if (firstRowCellCount === 0) {
+    return null;
+  }
+
+  if (table.rows.some((row) => row.cells.length !== firstRowCellCount)) {
+    return null;
+  }
+
+  return {
+    rows: table.rows.length,
+    cols: firstRowCellCount
+  };
+}
+
+function locateTableCellInSnapshot(
+  snapshot: HwpJson20DocumentSnapshot,
+  nodeId: string
+): { table: TableBlock; isFirstCell: boolean } | null {
+  const controlMap = normalizeIndexedCollection<HwpJson20ControlPayload>(snapshot.cs);
+  const sublistMap = normalizeIndexedCollection<HwpJson20SublistRecord>(snapshot.sl);
+
+  for (const [tableId, control] of Object.entries(controlMap)) {
+    const rowEntries = Array.isArray(control.tr) ? control.tr : [];
+    const rows = rowEntries
+      .map((rowEntry) => extractSnapshotRowCells(rowEntry, control, sublistMap))
+      .filter((row) => row.cells.length > 0);
+
+    if (rows.length === 0) {
+      continue;
+    }
+
+    for (const [rowIndex, row] of rows.entries()) {
+      for (const [columnIndex, cell] of row.cells.entries()) {
+        if (!cell.paragraphIds.includes(nodeId)) {
+          continue;
+        }
+
+        return {
+          table: createSnapshotTableBlock(tableId, rows),
+          isFirstCell: rowIndex === 0 && columnIndex === 0
+        };
+      }
+    }
+  }
+
+  const tokenFallback = locateTableByNearestToken(snapshot, nodeId, controlMap, sublistMap);
+  if (tokenFallback !== null) {
+    return tokenFallback;
+  }
+
+  return null;
+}
+
+function extractSnapshotRowCells(
+  rowEntry: unknown,
+  control: HwpJson20ControlPayload,
+  sublistMap: Record<string, HwpJson20SublistRecord>
+): { cells: Array<{ id: string; paragraphIds: string[] }> } {
+  const cellMap = normalizeIndexedCollection<unknown>(control.ch);
+  const knownCellIds = new Set(Object.keys(cellMap));
+  const cellIds = extractCellIds(rowEntry, knownCellIds);
+  return {
+    cells: cellIds.map((cellId) => ({
+      id: cellId,
+      paragraphIds: followTableCellParagraphIds(cellId, sublistMap)
+    }))
+  };
+}
+
+function followTableCellParagraphIds(
+  cellId: string,
+  sublistMap: Record<string, HwpJson20SublistRecord>
+): string[] {
+  const cellRecord = sublistMap[cellId];
+  const firstParagraphId = resolveRef(cellRecord?.hp);
+  if (firstParagraphId === null) {
+    return [];
+  }
+
+  const paragraphIds: string[] = [];
+  const seen = new Set<string>();
+  let currentParagraphId: string | null = firstParagraphId;
+
+  while (currentParagraphId !== null && !seen.has(currentParagraphId)) {
+    seen.add(currentParagraphId);
+    paragraphIds.push(currentParagraphId);
+    currentParagraphId = resolveRef(sublistMap[currentParagraphId]?.np);
+  }
+
+  return paragraphIds;
+}
+
+function locateTableByNearestToken(
+  snapshot: HwpJson20DocumentSnapshot,
+  nodeId: string,
+  controlMap: Record<string, HwpJson20ControlPayload>,
+  sublistMap: Record<string, HwpJson20SublistRecord>
+): { table: TableBlock; isFirstCell: boolean } | null {
+  const roMap = normalizeIndexedCollection<Record<string, unknown>>(snapshot.ro);
+  const prevMap = buildPreviousNodeMap(snapshot);
+  const seen = new Set<string>();
+  let currentNodeId: string | null = nodeId;
+
+  while (currentNodeId !== null && !seen.has(currentNodeId)) {
+    seen.add(currentNodeId);
+    const record = roMap[currentNodeId];
+    const tableTokenId = extractLastTableTokenId(record?.tx);
+    if (tableTokenId !== null) {
+      const control = controlMap[tableTokenId];
+      if (control !== undefined && Array.isArray(control.tr)) {
+        const rows = control.tr
+          .map((rowEntry) => extractSnapshotRowCells(rowEntry, control, sublistMap))
+          .filter((row) => row.cells.length > 0);
+        if (rows.length > 0) {
+          return {
+            table: createSnapshotTableBlock(tableTokenId, rows),
+            isFirstCell: resolveRef(record?.np) === nodeId
+          };
+        }
+      }
+    }
+
+    currentNodeId = prevMap.get(currentNodeId) ?? null;
+  }
+
+  return null;
+}
+
+function buildPreviousNodeMap(snapshot: HwpJson20DocumentSnapshot): Map<string, string> {
+  const previousNodeMap = new Map<string, string>();
+  const roMap = normalizeIndexedCollection<Record<string, unknown>>(snapshot.ro);
+  const slMap = normalizeIndexedCollection<Record<string, unknown>>(snapshot.sl);
+
+  for (const [recordId, record] of Object.entries(roMap)) {
+    const nextId = resolveRef(record.np);
+    if (nextId !== null && !previousNodeMap.has(nextId)) {
+      previousNodeMap.set(nextId, recordId);
+    }
+  }
+
+  for (const [recordId, record] of Object.entries(slMap)) {
+    const nextId = resolveRef(record.np);
+    if (nextId !== null && !previousNodeMap.has(nextId)) {
+      previousNodeMap.set(nextId, recordId);
+    }
+  }
+
+  return previousNodeMap;
+}
+
+function extractLastTableTokenId(value: unknown): string | null {
+  if (typeof value !== "string" || value.length === 0) {
+    return null;
+  }
+
+  const matches = Array.from(value.matchAll(/<0B\/74626C20\/([A-Za-z0-9]+)>/g));
+  const last = matches.at(-1);
+  return last?.[1] ?? null;
+}
+
+function createSnapshotTableBlock(
+  tableId: string,
+  rows: Array<{ cells: Array<{ id: string; paragraphIds: string[] }> }>
+): TableBlock {
+  return {
+    id: tableId,
+    kind: "table",
+    controlId: tableId,
+    rows: rows.map((snapshotRow) => ({
+      cells: snapshotRow.cells.map((snapshotCell) => ({
+        id: snapshotCell.id,
+        blocks:
+          snapshotCell.paragraphIds.length === 0
+            ? []
+            : [
+                {
+                  id: snapshotCell.paragraphIds[0] ?? `${snapshotCell.id}:p0`,
+                  kind: "paragraph",
+                  text: "",
+                  runs: [],
+                  paragraphStyle: {},
+                  rawNodeIds: snapshotCell.paragraphIds
+                }
+              ]
+      }))
+    }))
+  };
+}
+
+function extractCellIds(value: unknown, knownCellIds: ReadonlySet<string>): string[] {
+  const matches: string[] = [];
+  walkCellIds(value, knownCellIds, matches, 0);
+  return uniqueStrings(matches);
+}
+
+function walkCellIds(
+  value: unknown,
+  knownCellIds: ReadonlySet<string>,
+  matches: string[],
+  depth: number
+): void {
+  if (depth > 6) {
+    return;
+  }
+
+  if (typeof value === "string" || typeof value === "number") {
+    const ref = String(value);
+    if (knownCellIds.has(ref)) {
+      matches.push(ref);
+    }
+    return;
+  }
+
+  if (Array.isArray(value)) {
+    value.forEach((entry) => {
+      walkCellIds(entry, knownCellIds, matches, depth + 1);
+    });
+    return;
+  }
+
+  if (!isRecord(value)) {
+    return;
+  }
+
+  Object.values(value).forEach((entry) => {
+    walkCellIds(entry, knownCellIds, matches, depth + 1);
+  });
+}
+
+function normalizeIndexedCollection<T>(input: unknown): Record<string, T> {
+  if (Array.isArray(input)) {
+    const entries = input.flatMap<[string, T]>((entry, index) => {
+      if (!isRecord(entry)) {
+        return [];
+      }
+
+      const id = resolveRef(entry.id) ?? String(index);
+      return [[id, entry as T]];
+    });
+    return Object.fromEntries(entries);
+  }
+
+  if (!isRecord(input)) {
+    return {};
+  }
+
+  return Object.fromEntries(
+    Object.entries(input).map(([key, value]) => [key, value as T])
+  );
+}
+
+function resolveRef(value: unknown): string | null {
+  if (typeof value === "string" && value.length > 0) {
+    return value;
+  }
+
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return String(value);
+  }
+
+  return null;
+}
+
+function uniqueStrings(values: readonly string[]): string[] {
+  return Array.from(new Set(values));
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function findFirstParagraphId(blocks: readonly DocumentBlock[]): string | null {
+  for (const block of blocks) {
+    if (block.kind === "paragraph") {
+      return block.rawNodeIds?.[0] ?? block.id;
+    }
+
+    if (block.kind !== "table") {
+      continue;
+    }
+
+    for (const row of block.rows) {
+      for (const cell of row.cells) {
+        const nestedId = findFirstParagraphId(cell.blocks);
+        if (nestedId !== null) {
+          return nestedId;
+        }
+      }
+    }
+  }
+
+  return null;
 }

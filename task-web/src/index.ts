@@ -11,7 +11,6 @@ export {
 } from "./client/errors.js";
 export type {
   CaretPosition,
-  CaretTarget,
   ChromeTargetInfo,
   ConnectionOptions,
   DeleteTableRowRequest,
@@ -38,6 +37,9 @@ export type {
   InsertTableRequest,
   InsertTableResult,
   InsertTableRowRequest,
+  JsonExportOptions,
+  JsonExportPayload,
+  MarkdownExportOptions,
   PageNavigationResult,
   PageRange,
   ParagraphBlock,

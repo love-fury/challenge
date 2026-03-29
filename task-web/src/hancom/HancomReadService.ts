@@ -6,12 +6,18 @@ import type { CdpSession } from "../client/CdpSession.js";
 import type {
   CaretPosition,
   HancomDocument,
+  JsonExportOptions,
   ParagraphBlock,
   ParagraphFormattingResult,
   ParagraphLocator,
+  MarkdownExportOptions,
   SearchOptions,
   SearchResult
 } from "../models/types.js";
+import { applyEmbeddedImages, collectDocumentImageSources } from "./documentImageEmbeds.js";
+import { applyLiveImageSources } from "./documentImageSources.js";
+import { exportDocumentToJson } from "../operations/json.js";
+import { exportDocumentToMarkdown } from "../operations/markdown.js";
 import {
   flattenDocumentText,
   resolveParagraphBlock,
@@ -47,7 +53,9 @@ export class HancomReadService {
       );
     }
 
-    return this.hwpJson20Codec.parse(snapshot);
+    const document = this.hwpJson20Codec.parse(snapshot);
+    const liveImageSourceMap = await this.hwpJson20Reader.readLiveImageSourceMap();
+    return applyLiveImageSources(document, liveImageSourceMap);
   }
 
   async readText(): Promise<string> {
@@ -56,6 +64,48 @@ export class HancomReadService {
 
   async readStructure(): Promise<HancomDocument["blocks"]> {
     return (await this.readDocument()).blocks;
+  }
+
+  async exportMarkdown(options: MarkdownExportOptions = {}): Promise<string> {
+    let document = await this.readDocument();
+
+    if (options.includeImagesAsDataUrls === true) {
+      const imageSources = collectDocumentImageSources(document);
+      if (imageSources.length > 0) {
+        const imageDataMap = await this.hwpJson20Reader.readImageBase64Map(imageSources);
+        const embedded = applyEmbeddedImages(document, imageDataMap);
+        document =
+          embedded.warnings.length === 0
+            ? embedded.document
+            : {
+                ...embedded.document,
+                warnings: [...embedded.document.warnings, ...embedded.warnings]
+              };
+      }
+    }
+
+    return exportDocumentToMarkdown(document, options);
+  }
+
+  async exportJson(options: JsonExportOptions = {}): Promise<string> {
+    let document = await this.readDocument();
+
+    if (options.includeImages === true) {
+      const imageSources = collectDocumentImageSources(document);
+      if (imageSources.length > 0) {
+        const imageDataMap = await this.hwpJson20Reader.readImageBase64Map(imageSources);
+        const embedded = applyEmbeddedImages(document, imageDataMap);
+        document =
+          embedded.warnings.length === 0
+            ? embedded.document
+            : {
+                ...embedded.document,
+                warnings: [...embedded.document.warnings, ...embedded.warnings]
+              };
+      }
+    }
+
+    return exportDocumentToJson(document, options);
   }
 
   async getParagraphFormatting(locator: ParagraphLocator): Promise<ParagraphFormattingResult> {
